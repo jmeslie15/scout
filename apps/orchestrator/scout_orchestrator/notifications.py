@@ -143,7 +143,9 @@ class NotificationDispatcher:
             except Exception as exc:
                 _log.warning(
                     "notification dispatch raised",
-                    event=event,
+                    # `event` is structlog's reserved name for the message; using it as a keyword
+                    # would raise TypeError inside the very handler meant to contain a failure.
+                    notification_event=event,
                     error=f"{type(exc).__name__}: {exc}",
                 )
                 return NotificationDispatch(

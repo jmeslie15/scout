@@ -1,19 +1,19 @@
 """What Scout claims about change coverage, and what it refuses to claim.
 
-``change_is_covered`` answers exactly one question -- "does a test execute the changed code?" -- and
-only a coverage measurement can answer it. These tests pin that, because the field previously meant
-two different things depending on which branch produced it:
+``change_is_covered`` answers exactly one question -- "does a test execute the changed code?" --
+and only a coverage measurement can answer it. These tests pin that, because the field previously
+meant two different things depending on which branch produced it:
 
 * **the census regression.** A ``coverage`` tool row is recorded even when the tool was *not
   applicable*, so the skip survives a resume. Reading that row as a measurement asserted "the change
   is exercised by tests" on the strength of a tool that never ran. The census branch then never
   executed, which is why the defect survived to the end-to-end layer.
-* **the semantics the domain declares** (see ``TestOutcomeSummary``): ``True`` means a test runs the
-  changed code, ``False`` means a changed production path no test touches, ``None`` means Scout could
-  not determine it and deliberately does not guess.
+* **the semantics the domain declares** (see ``TestOutcomeSummary``): ``True`` means a test runs
+  the changed code, ``False`` means a changed production path no test touches, ``None`` means Scout
+  could not determine it and deliberately does not guess.
 * **the separation of concerns.** "Did this change arrive with a test edit?" is a census, not a
-  coverage verdict, so it is stated as its own limitation and (when the repository asks for it) as its
-  own finding -- never folded into ``change_is_covered``.
+  coverage verdict, so it is stated as its own limitation and (when the repository asks for it)
+  as its own finding -- never folded into ``change_is_covered``.
 """
 
 from __future__ import annotations

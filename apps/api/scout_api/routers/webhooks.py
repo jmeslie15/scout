@@ -24,7 +24,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
 
-from scout_api.deps import AppState, UowDep, app_state, settings_dependency
+from scout_api.deps import AppState, app_state, settings_dependency
 from scout_api.schemas import ErrorBody
 from scout_api.settings import Settings
 from scout_domain.enums import ActorType, JobStatus, RiskLevel
@@ -40,6 +40,7 @@ from scout_github.webhooks import (
 )
 from scout_observability import get_logger, job_context
 from scout_persistence.queue import JobMessage, JobQueue, RedisJobQueue
+from scout_persistence.unit_of_work import UnitOfWork
 
 __all__ = ["router"]
 
@@ -61,14 +62,19 @@ SIGNATURE_HEADER = "X-Hub-Signature-256"
 )
 async def github_webhook(
     request: Request,
-    uow: UowDep,
     settings: Annotated[Settings, settings_dependency],
     x_github_event: Annotated[str | None, Header(alias=EVENT_HEADER)] = None,
     x_github_delivery: Annotated[str | None, Header(alias=DELIVERY_HEADER)] = None,
     x_hub_signature_256: Annotated[str | None, Header(alias=SIGNATURE_HEADER)] = None,
 ) -> dict[str, Any]:
-    """Accept a ``pull_request`` delivery and create a verification job."""
-    state = app_state(request)
+    """Accept a ``pull_request`` delivery and create a verification job.
+
+    Note what this handler does *not* take: a database session. It is acquired inside, after the
+    signature has verified. FastAPI resolves declared dependencies before the handler body runs, so
+    accepting a unit of work as a parameter would open a connection for every forged delivery.
+    Authentication must precede resource acquisition -- both because it is the right order and
+    because otherwise an unauthenticated flood can exhaust the connection pool.
+    """
     raw_body = await request.body()
 
     # -- 1/2. Signature verification over the raw bytes --------------------------------
@@ -94,7 +100,9 @@ async def github_webhook(
             _log.warning(
                 "rejected a webhook delivery with an invalid signature",
                 delivery_id=x_github_delivery,
-                event=x_github_event,
+                # NOT `event=`: structlog binds the positional message to that name, so passing
+                # it as a keyword raises TypeError and turns the intended 401 into a 500.
+                github_event=x_github_event,
                 error=str(exc),
             )
             raise HTTPException(
@@ -149,19 +157,62 @@ async def github_webhook(
             detail={"code": "invalid_pull_request_payload", "message": str(exc)},
         ) from exc
 
+    # Application state (engine, queue, artifact store) is resolved here rather than at the top:
+    # a request rejected for a bad signature, malformed JSON, an irrelevant action, or a missing
+    # delivery id must not touch a dependency at all.
+    state = app_state(request)
+
+    # `job_context` is a synchronous context manager and the unit of work is an asynchronous one,
+    # so they cannot share a `with` statement.
+    # Bind the correlation context around the work, then return outside the block so the control
+    # flow is unambiguous to both a reader and the type checker.
+    response: dict[str, Any]
     with job_context(
         repository=event.repository.full_name,
         pull_request=event.pull_request_number,
         delivery_id=x_github_delivery,
     ):
-        return await _intake(
-            uow=uow,
+        response = await _intake_in_session(
             state=state,
             event=event,
             delivery_id=x_github_delivery,
             event_type=x_github_event or "",
             payload=payload,
         )
+    return response
+
+
+async def _intake_in_session(
+    *,
+    state: AppState,
+    event: PullRequestEvent,
+    delivery_id: str,
+    event_type: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Open the transaction and record the delivery.
+
+    Split out so the session lifetime is visible as its own step. The database is not touched
+    until this function runs, which is after signature verification, JSON parsing, event
+    filtering, and delivery-id validation.
+    """
+    # Assigned inside the block and returned outside it. Returning from inside an `async with`
+    # is correct but mypy cannot prove the block always executes, so it reports a missing return;
+    # the explicit shape keeps the type checker and a reader in agreement without a suppression.
+    outcome: dict[str, Any] = {}
+    async with UnitOfWork(state.session_factory) as unit_of_work:
+        outcome = await _intake(
+            uow=unit_of_work,
+            state=state,
+            event=event,
+            delivery_id=delivery_id,
+            event_type=event_type,
+            payload=payload,
+        )
+    # ruff would inline this (RET504); mypy requires it (returning from inside `async with` is
+    # reported as a missing return). The correctness rule wins, and the reason is recorded here
+    # rather than left as an unexplained suppression.
+    return outcome  # noqa: RET504
 
 
 async def _intake(

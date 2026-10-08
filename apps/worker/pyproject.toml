@@ -13,6 +13,7 @@ dependencies = [
     "scout-llm",
     "scout-agents",
     "scout-knowledge",
+    "scout-orchestrator",
     "redis>=5.0",
     "httpx>=0.27",
 ]
@@ -25,6 +26,7 @@ build-backend = "hatchling.build"
 packages = ["scout_worker"]
 
 [tool.uv.sources]
+scout-orchestrator = { workspace = true }
 scout-agents = { workspace = true }
 scout-domain = { workspace = true }
 scout-github = { workspace = true }

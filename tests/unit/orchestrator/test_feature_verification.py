@@ -1,10 +1,10 @@
 """The acceptance-criteria gate: prose criteria are never reported as verified.
 
 Spec section 23 exists because "the tests passed" is not the same claim as "the requested feature
-works", and spec section 25 makes a criterion passable only with evidence *and* an observed result.
-The domain's ``CriterionVerification`` validator enforces the second half; these tests enforce the
-first half, which lives here: Scout must not manufacture evidence for a criterion out of a test whose
-name happens to share a word with it.
+works", and spec section 25 makes a criterion passable only with evidence *and* an observed
+result. The domain's ``CriterionVerification`` validator enforces the second half; these tests
+enforce the first half, which lives here: Scout must not manufacture evidence for a criterion out
+of a test whose name happens to share a word with it.
 
 That is not a hypothetical. A keyword overlap between a criterion and a test name is a *lead*, and
 treating it as a verification would let any change pass its own stated requirements. The tests below
@@ -17,7 +17,6 @@ from scout_domain.config import ScoutRepositoryConfig
 from scout_domain.enums import CriterionStatus, ToolStatus
 from scout_domain.models.base import utcnow
 from scout_domain.models.tool import ToolResult, ToolSummary
-
 from scout_orchestrator.stages.feature_verification import (
     build_criteria_for,
     passing_tests_from_artifacts,
@@ -100,7 +99,11 @@ def test_a_stated_criterion_is_never_passed_on_a_name_overlap() -> None:
 
 
 def test_a_stated_criterion_is_blocked_when_the_runtime_ran_nothing() -> None:
-    """A criterion Scout could not even attempt is BLOCKED, which the domain requires a question for."""
+    """A criterion Scout could not even attempt is BLOCKED.
+
+    The domain then requires an open question explaining what is missing, which INVESTIGATING
+    raises.
+    """
     criteria = build_criteria_for(
         config=_config(),
         requirement_text=CRITERION,
@@ -115,7 +118,7 @@ def test_a_stated_criterion_is_blocked_when_the_runtime_ran_nothing() -> None:
 
 
 def test_disabled_feature_verification_produces_no_criteria() -> None:
-    """A repository that switched the stage off is not assessed against criteria it did not submit."""
+    """A repository that switched the stage off is not assessed against criteria it did not send."""
     criteria = build_criteria_for(
         config=_config(enabled=False),
         requirement_text=CRITERION,
@@ -141,9 +144,7 @@ def test_declared_criteria_take_precedence_over_the_pull_request_body() -> None:
         head_sha="b" * 40,
     )
 
-    assert [criterion.criterion for criterion in criteria] == [
-        "the export endpoint returns a CSV"
-    ]
+    assert [criterion.criterion for criterion in criteria] == ["the export endpoint returns a CSV"]
     assert criteria[0].source == "acceptance_criteria"
 
 
@@ -172,7 +173,7 @@ def test_a_test_the_change_modified_can_be_verified_by_its_own_execution() -> No
 
 
 def test_a_changed_test_whose_suite_broke_blocks_instead_of_passing() -> None:
-    """When the runtime produced nothing, the criterion is BLOCKED rather than optimistically passed."""
+    """When the runtime produced nothing, the criterion is BLOCKED, not optimistically passed."""
     criteria = build_criteria_for(
         config=_config(),
         requirement_text="",
@@ -188,7 +189,7 @@ def test_a_changed_test_whose_suite_broke_blocks_instead_of_passing() -> None:
 
 
 def test_passing_tests_come_from_the_stored_report_not_from_assertion() -> None:
-    """With no readable JUnit report there are no passing tests, so nothing can claim a pass."""
+    """With no readable JUnit report there are no passing tests, so none can claim a pass."""
     assert passing_tests_from_artifacts((), None) == ()  # type: ignore[arg-type]
     assert runtime_available_for([], []) is False
     assert runtime_available_for([_pytest()], []) is True

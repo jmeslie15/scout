@@ -84,9 +84,7 @@ class TestingStage(BaseStage):
             and without_test_edit
         ):
             findings.append(
-                _uncovered_change_finding(
-                    ctx, bundle=bundle, without_test_edit=without_test_edit
-                )
+                _uncovered_change_finding(ctx, bundle=bundle, without_test_edit=without_test_edit)
             )
 
         return StageResult.succeeded_for(

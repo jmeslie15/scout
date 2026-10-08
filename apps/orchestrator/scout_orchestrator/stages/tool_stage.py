@@ -373,9 +373,7 @@ def summarize_tests(
         # Nothing measured execution, so the field stays undetermined even though the change may
         # well be covered -- by an existing test, or by a test this change added.
         del changed_paths
-        return summary.model_copy(
-            update={"change_is_covered": None, "uncovered_changed_paths": []}
-        )
+        return summary.model_copy(update={"change_is_covered": None, "uncovered_changed_paths": []})
 
     assert coverage_result is not None  # guaranteed by coverage_measurement_present
     values = coverage_result.summary.values
@@ -439,8 +437,7 @@ def change_coverage_section(
             title="Change coverage",
             status=ReportSectionStatus.INFO,
             summary=(
-                "a coverage measurement ran and every changed source path is executed by the "
-                "suite"
+                "a coverage measurement ran and every changed source path is executed by the suite"
                 if tests.change_is_covered is True
                 else "a coverage measurement ran; see the tool output for details"
             ),
