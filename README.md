@@ -69,6 +69,12 @@ Initial deployment target: **Apple Silicon Mac Mini, M1, 16 GB RAM**. See
 
 ## Quickstart
 
+Setting up a fresh machine — especially the Apple Silicon Mac Mini — follow
+[`docs/ONBOARDING.md`](docs/ONBOARDING.md) instead; it covers the prerequisites and the four traps
+that cost real time (default Node v16, `uv sync` without `--all-packages`, Alembic needing
+`SCOUT_DATABASE_URL` exported, and integration tests skipping rather than failing when Postgres is
+down).
+
 ```bash
 cp .env.example .env          # defaults run fully offline (fake GitHub + fake LLM)
 make bootstrap                # install Python + dashboard dependencies
