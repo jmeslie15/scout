@@ -215,10 +215,28 @@ async def test_a_retry_policy_and_pricing_table_can_be_injected() -> None:
 
 
 def test_default_prompts_root_points_at_the_repository_tree() -> None:
+    """The prompts tree ships with the code, so it must resolve from the code's location.
+
+    Deliberately does not assert the repository directory's *name*. An earlier version asserted
+    ``root.parent.name == "scout_code"``, which was true only on the machine that wrote it and
+    failed on every fresh clone -- a test that encodes a local path turns "works on my machine"
+    into a broken handover. The property that actually matters is that the resolved directory is
+    the repository root, and that is provable from the repository's own contents.
+    """
     root = default_prompts_root()
 
     assert root.name == "prompts"
-    assert root.parent.name == "scout_code"
+    assert root.is_dir(), f"the prompts directory does not exist at {root}"
+
+    repository_root = root.parent
+    assert (repository_root / "pyproject.toml").is_file(), (
+        f"{root} is not inside a Scout checkout: no pyproject.toml in {repository_root}"
+    )
+    assert (repository_root / "packages" / "llm" / "scout_llm" / "factory.py").is_file()
+
+    # And it must actually hold the per-role prompt directories the library addresses.
+    for role_directory in ("repository_analyzer", "code_reviewer", "security"):
+        assert (root / role_directory).is_dir(), f"missing prompt role directory: {role_directory}"
 
 
 def test_environment_variable_names_match_dot_env_example() -> None:

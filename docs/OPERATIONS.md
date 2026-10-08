@@ -45,8 +45,8 @@ sandbox at a time.
 ## 2. First-time setup
 
 ```bash
-git clone <repository-url> scout_code
-cd scout_code
+git clone <repository-url> scout
+cd scout
 make bootstrap          # creates .env from .env.example, then installs dependencies
 ```
 
