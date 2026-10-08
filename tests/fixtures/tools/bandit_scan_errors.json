@@ -1,0 +1,11 @@
+{
+  "errors": [
+    {
+      "filename": "src/broken.py",
+      "reason": "syntax error while parsing AST from file"
+    }
+  ],
+  "generated_at": "2024-11-02T10:15:30Z",
+  "metrics": { "_totals": { "loc": 10, "nosec": 0, "skipped_tests": 0 } },
+  "results": []
+}

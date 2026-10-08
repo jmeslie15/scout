@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <h1>Verification complete &mdash; {{ recommendation }}</h1>
+    <p>
+      <strong>Repository:</strong> {{ repository_full_name }} &mdash; PR #{{ pull_request_number }}<br />
+      <strong>Commit:</strong> <code>{{ commit_sha }}</code><br />
+      <strong>Severity:</strong> {{ severity }}
+    </p>
+
+    <h2>Summary</h2>
+    <p>{{ summary }}</p>
+
+    <h2>Test results</h2>
+    <p>
+      {{ tests.passed }} passed, {{ tests.failed }} failed, {{ tests.skipped }} skipped
+      ({{ tests.total }} total)
+    </p>
+
+    {% if severity_counts %}
+    <h2>Findings by severity</h2>
+    <ul>
+      {% for name, count in severity_counts.items() %}
+      <li>{{ name }}: {{ count }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    <h2>Recommendation</h2>
+    <p>{{ recommendation }}</p>
+
+    {% if unverified_areas %}
+    <h2>Not verified</h2>
+    <ul>
+      {% for area in unverified_areas %}
+      <li>{{ area }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    <h2>Job</h2>
+    <p><a href="{{ job_url }}">{{ job_url }}</a></p>
+  </body>
+</html>

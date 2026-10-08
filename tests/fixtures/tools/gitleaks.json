@@ -1,0 +1,42 @@
+[
+  {
+    "Description": "AWS Access Key",
+    "StartLine": 12,
+    "EndLine": 12,
+    "StartColumn": 24,
+    "EndColumn": 44,
+    "Match": "REDACTED",
+    "Secret": "REDACTED",
+    "File": "config/settings.py",
+    "SymlinkFile": "",
+    "Commit": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+    "Entropy": 3.684184,
+    "Author": "Dev Eloper",
+    "Email": "dev@example.com",
+    "Date": "2024-11-02T10:15:30Z",
+    "Message": "add deployment settings",
+    "Tags": ["key", "AWS"],
+    "RuleID": "aws-access-token",
+    "Fingerprint": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0:config/settings.py:aws-access-token:12"
+  },
+  {
+    "Description": "Generic API Key",
+    "StartLine": 3,
+    "EndLine": 3,
+    "StartColumn": 18,
+    "EndColumn": 52,
+    "Match": "REDACTED",
+    "Secret": "REDACTED",
+    "File": "scripts/deploy.sh",
+    "SymlinkFile": "",
+    "Commit": "b1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+    "Entropy": 4.121,
+    "Author": "Dev Eloper",
+    "Email": "dev@example.com",
+    "Date": "2024-10-28T09:01:00Z",
+    "Message": "deploy helper",
+    "Tags": [],
+    "RuleID": "generic-api-key",
+    "Fingerprint": "b1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0:scripts/deploy.sh:generic-api-key:3"
+  }
+]

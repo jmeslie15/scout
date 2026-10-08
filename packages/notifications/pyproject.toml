@@ -1,0 +1,22 @@
+[project]
+name = "scout-notifications"
+version = "0.1.0"
+description = "Severity-routed notifications with templating, deduplication, and pluggable channels."
+requires-python = ">=3.12"
+dependencies = [
+    "scout-domain",
+    "scout-observability",
+    "httpx>=0.27",
+    "jinja2>=3.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["scout_notifications"]
+
+[tool.uv.sources]
+scout-domain = { workspace = true }
+scout-observability = { workspace = true }

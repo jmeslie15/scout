@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <h1>{{ question.title }}</h1>
+    <p>
+      <strong>Severity:</strong> {{ severity }}<br />
+      <strong>Repository:</strong> {{ repository_full_name }}{% if pull_request_number %} &mdash; PR #{{ pull_request_number }}{% endif %}
+    </p>
+
+    <h2>The question</h2>
+    <p>{{ question.description }}</p>
+
+    <h2>Why Scout is asking</h2>
+    <p>{{ why_asking }}</p>
+
+    {% if investigation_summary %}
+    <h2>What Scout already checked</h2>
+    <p>{{ investigation_summary }}</p>
+    {% endif %}
+
+    <h2>Relevant evidence</h2>
+    {% if evidence %}
+    <ul>
+      {% for item in evidence %}
+      <li>
+        {{ item.summary }}
+        {% if item.file_path %}<code>{{ item.file_path }}{% if item.line_start %}:{{ item.line_start }}{% endif %}</code>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p>No evidence was recorded; this question rests on reasoning alone.</p>
+    {% endif %}
+
+    <h2>Suggested options</h2>
+    {% if options %}
+    <ol>
+      {% for option in options %}
+      <li>{{ option }}</li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p>No closed-form options were offered; record a free-form decision.</p>
+    {% endif %}
+
+    {% if default_assumption %}
+    <h2>Default if unanswered</h2>
+    <p>{{ default_assumption }}</p>
+    {% endif %}
+
+    <h2>Job</h2>
+    <p><a href="{{ job_url }}">{{ job_url }}</a></p>
+  </body>
+</html>

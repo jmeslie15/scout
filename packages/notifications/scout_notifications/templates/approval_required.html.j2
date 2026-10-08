@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <h1>Approval required</h1>
+    <p>
+      <strong>Repository:</strong> {{ repository_full_name }} &mdash; PR #{{ pull_request_number }}<br />
+      <strong>Pull request:</strong> {{ pull_request_title }}<br />
+      <strong>Risk level:</strong> {{ risk_level }}<br />
+      <strong>Commit:</strong> <code>{{ commit_sha }}</code>
+    </p>
+
+    <p>
+      Scout has finished automated verification and is waiting for a human decision. Scout
+      never approves its own work. The next step belongs to a person.
+    </p>
+
+    <h2>Job</h2>
+    <p><a href="{{ job_url }}">{{ job_url }}</a></p>
+  </body>
+</html>

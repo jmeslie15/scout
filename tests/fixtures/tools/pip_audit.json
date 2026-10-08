@@ -1,0 +1,31 @@
+{
+  "dependencies": [
+    { "name": "requests", "version": "2.31.0", "vulns": [] },
+    { "name": "certifi", "version": "2024.2.2", "vulns": [] },
+    {
+      "name": "jinja2",
+      "version": "3.1.2",
+      "vulns": [
+        {
+          "id": "GHSA-h5c8-rqwp-cp95",
+          "fix_versions": ["3.1.3"],
+          "aliases": ["CVE-2024-22195"],
+          "description": "The `xmlattr` filter does not escape keys, which can lead to cross-site scripting when untrusted input is used as an attribute name."
+        }
+      ]
+    },
+    {
+      "name": "urllib3",
+      "version": "1.26.5",
+      "vulns": [
+        {
+          "id": "GHSA-v845-jxx5-vc9f",
+          "fix_versions": ["1.26.18", "2.0.7"],
+          "aliases": ["CVE-2023-45803"],
+          "description": "urllib3 previously did not remove the request body on a redirect for a 303 response, which could leak credentials."
+        }
+      ]
+    }
+  ],
+  "fixes": []
+}

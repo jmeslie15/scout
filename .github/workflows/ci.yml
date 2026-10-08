@@ -1,0 +1,208 @@
+# =============================================================================
+# Scout — continuous integration.
+#
+# Gate order: formatting/lint -> types -> unit+contract tests -> integration.
+# Integration tests need real PostgreSQL and Redis, so they run in a separate
+# job with a `services:` block instead of being skipped.
+#
+# No secrets are required: the platform defaults to fake GitHub and fake LLM
+# clients, and all credentials below are throwaway service credentials for an
+# ephemeral CI database.
+# =============================================================================
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# One run per ref; a new push cancels the previous, still-running build.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.5.11"
+  # Matches the markers registered in the root pyproject.toml.
+  FAST_MARKERS: "not integration and not e2e and not sandbox"
+  SCOUT_ENV: test
+  SCOUT_LLM_DEFAULT_PROVIDER: fake
+
+jobs:
+  # ---------------------------------------------------------------------------
+  python-lint:
+    name: python-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install workspace dependencies
+        run: uv sync --all-packages
+
+      - name: ruff format --check
+        run: uv run --no-sync ruff format --check packages apps/api apps/orchestrator apps/worker
+
+      - name: ruff check
+        run: uv run --no-sync ruff check packages apps/api apps/orchestrator apps/worker
+
+  # ---------------------------------------------------------------------------
+  python-typecheck:
+    name: python-typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install workspace dependencies
+        run: uv sync --all-packages
+
+      - name: mypy
+        run: uv run --no-sync mypy
+
+  # ---------------------------------------------------------------------------
+  python-test:
+    name: python-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install workspace dependencies
+        run: uv sync --all-packages
+
+      - name: pytest (unit + contract)
+        run: uv run --no-sync pytest -m "${{ env.FAST_MARKERS }}"
+
+  # ---------------------------------------------------------------------------
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: scout
+          POSTGRES_USER: scout
+          POSTGRES_PASSWORD: scout
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U scout -d scout"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Throwaway credentials for the ephemeral CI service containers.
+      SCOUT_DATABASE_URL: postgresql+asyncpg://scout:scout@localhost:5433/scout
+      SCOUT_REDIS_URL: redis://localhost:6380/0
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install workspace dependencies
+        run: uv sync --all-packages
+
+      - name: Apply database migrations
+        # migrations/ is owned by the persistence package and may land after
+        # this workflow; a missing alembic.ini is skipped, not failed.
+        run: |
+          if [ -f migrations/alembic.ini ]; then
+            uv run --no-sync alembic -c migrations/alembic.ini upgrade head
+          else
+            echo "migrations/alembic.ini not present yet; skipping migrations"
+          fi
+
+      - name: pytest (integration)
+        run: uv run --no-sync pytest -m "integration"
+
+  # ---------------------------------------------------------------------------
+  dashboard:
+    name: dashboard
+    runs-on: ubuntu-latest
+    # Guard: the dashboard is not scaffolded yet. Until
+    # apps/dashboard/package.json exists this job is skipped, which reports as
+    # success on the check without pretending to have built anything.
+    if: ${{ hashFiles('apps/dashboard/package.json') != '' }}
+    defaults:
+      run:
+        working-directory: apps/dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: apps/dashboard/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run --if-present lint
+
+      - name: Typecheck
+        run: pnpm run --if-present typecheck
+
+      - name: Test
+        run: pnpm run --if-present test
+
+      - name: Build
+        run: pnpm run --if-present build

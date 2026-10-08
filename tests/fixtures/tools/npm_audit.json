@@ -1,0 +1,54 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "lodash": {
+      "name": "lodash",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1094497,
+          "name": "lodash",
+          "dependency": "lodash",
+          "title": "Prototype Pollution in lodash",
+          "url": "https://github.com/advisories/GHSA-29mw-wpgm-hmr9",
+          "severity": "high",
+          "cwe": ["CWE-1321"],
+          "cvss": { "score": 7.4, "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:H/A:H" },
+          "range": "<4.17.21"
+        },
+        "lodash.template"
+      ],
+      "effects": ["express-handlebars"],
+      "range": "<4.17.21",
+      "nodes": ["node_modules/lodash"],
+      "fixAvailable": { "name": "lodash", "version": "4.17.21", "isSemVerMajor": false }
+    },
+    "minimist": {
+      "name": "minimist",
+      "severity": "critical",
+      "isDirect": true,
+      "via": [
+        {
+          "source": 1097676,
+          "name": "minimist",
+          "dependency": "minimist",
+          "title": "Prototype Pollution in minimist",
+          "url": "https://github.com/advisories/GHSA-xvch-5gv4-984h",
+          "severity": "critical",
+          "cwe": ["CWE-1321"],
+          "cvss": { "score": 9.8, "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" },
+          "range": "<1.2.6"
+        }
+      ],
+      "effects": [],
+      "range": "<=1.2.5",
+      "nodes": ["node_modules/minimist"],
+      "fixAvailable": true
+    }
+  },
+  "metadata": {
+    "vulnerabilities": { "info": 0, "low": 0, "moderate": 0, "high": 1, "critical": 1, "total": 2 },
+    "dependencies": { "prod": 84, "dev": 212, "optional": 12, "peer": 0, "peerOptional": 0, "total": 307 }
+  }
+}

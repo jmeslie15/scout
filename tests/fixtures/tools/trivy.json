@@ -1,0 +1,58 @@
+{
+  "SchemaVersion": 2,
+  "CreatedAt": "2024-11-02T10:15:30.123456Z",
+  "ArtifactName": ".",
+  "ArtifactType": "filesystem",
+  "Results": [
+    {
+      "Target": "package-lock.json",
+      "Class": "lang-pkgs",
+      "Type": "npm",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2021-23337",
+          "PkgID": "lodash@4.17.20",
+          "PkgName": "lodash",
+          "InstalledVersion": "4.17.20",
+          "FixedVersion": "4.17.21",
+          "Severity": "HIGH",
+          "Title": "Command Injection in lodash",
+          "Description": "lodash versions prior to 4.17.21 are vulnerable to Command Injection via the template function.",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2021-23337",
+          "CweIDs": ["CWE-94"]
+        },
+        {
+          "VulnerabilityID": "CVE-2022-25883",
+          "PkgID": "semver@7.3.5",
+          "PkgName": "semver",
+          "InstalledVersion": "7.3.5",
+          "FixedVersion": "7.5.2",
+          "Severity": "MEDIUM",
+          "Title": "Regular Expression Denial of Service in semver",
+          "Description": "semver is vulnerable to ReDoS when parsing untrusted ranges.",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2022-25883",
+          "CweIDs": ["CWE-1333"]
+        }
+      ]
+    },
+    {
+      "Target": "deploy/Dockerfile",
+      "Class": "config",
+      "Type": "dockerfile",
+      "Misconfigurations": [
+        {
+          "ID": "DS002",
+          "AVDID": "AVD-DS-0002",
+          "Title": "Image user should not be 'root'",
+          "Description": "Running containers as root exposes the host to privilege escalation.",
+          "Message": "Specify a non-root user with the USER instruction.",
+          "Severity": "HIGH",
+          "Resolution": "Add a USER instruction after installing dependencies.",
+          "References": ["https://docs.docker.com/develop/develop-images/dockerfile_best-practices/"],
+          "Status": "FAIL",
+          "CauseMetadata": { "StartLine": 1, "EndLine": 12 }
+        }
+      ]
+    }
+  ]
+}

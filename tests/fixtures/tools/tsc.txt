@@ -1,0 +1,4 @@
+src/api/client.ts(42,17): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.
+src/models/user.ts(8,3): error TS2339: Property 'email' does not exist on type 'User'.
+src/legacy/parser.ts(101,5): error TS1005: ';' expected.
+error TS5083: Cannot read file '/build/tsconfig.json'.

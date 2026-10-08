@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+  <testsuite name="pytest" errors="0" failures="0" skipped="0" tests="3" time="0.318" timestamp="2024-11-02T10:15:30.123456" hostname="scout-runner">
+    <testcase classname="tests.test_api" name="test_health" time="0.011" file="tests/test_api.py" line="9" />
+    <testcase classname="tests.test_api" name="test_create_user" time="0.245" file="tests/test_api.py" line="17" />
+    <testcase classname="tests.test_api" name="test_delete_user" time="0.062" file="tests/test_api.py" line="33" />
+  </testsuite>
+</testsuites>

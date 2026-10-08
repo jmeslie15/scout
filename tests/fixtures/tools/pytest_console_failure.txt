@@ -1,0 +1,5 @@
+=========================== short test summary info ============================
+FAILED tests/test_api.py::test_create_user - AssertionError: assert 422 == 201
+FAILED tests/test_api.py::test_delete_user - KeyError: 'id'
+ERROR tests/test_db.py::test_connect - RuntimeError: database is unavailable
+========================= 2 failed, 1 passed, 1 error in 0.87s ==========================

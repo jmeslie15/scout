@@ -1,0 +1,48 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.hypothesis/
+
+# --- Node ---
+node_modules/
+apps/dashboard/dist/
+apps/dashboard/.vite/
+*.tsbuildinfo
+.pnpm-store/
+
+# --- Scout runtime state ---
+var/artifacts/*
+var/workspaces/*
+!var/artifacts/.gitkeep
+!var/workspaces/.gitkeep
+*.log
+logs/
+
+# --- Secrets & local config (NEVER commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.p8
+*.key
+secrets/
+.scout/local.yaml
+
+# --- OS / editor ---
+.DS_Store
+.idea/
+.vscode/
+*.swp

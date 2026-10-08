@@ -1,0 +1,21 @@
+[project]
+name = "scout-persistence"
+version = "0.1.0"
+description = "SQLAlchemy 2.0 schema, repositories, unit of work, and Alembic migration environment."
+requires-python = ">=3.12"
+dependencies = [
+    "scout-domain",
+    "sqlalchemy[asyncio]>=2.0.35",
+    "asyncpg>=0.30",
+    "alembic>=1.13",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["scout_persistence"]
+
+[tool.uv.sources]
+scout-domain = { workspace = true }

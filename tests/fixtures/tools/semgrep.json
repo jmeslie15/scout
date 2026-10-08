@@ -1,0 +1,46 @@
+{
+  "version": "1.90.0",
+  "results": [
+    {
+      "check_id": "python.lang.security.audit.eval-detected.eval-detected",
+      "path": "src/scout_app/expr.py",
+      "start": { "line": 15, "col": 12, "offset": 400 },
+      "end": { "line": 15, "col": 26, "offset": 414 },
+      "extra": {
+        "message": "Detected the use of eval(). eval() can be dangerous if used to evaluate dynamic content. If this content can be input from outside the program, this may be a code injection vulnerability.",
+        "metadata": {
+          "category": "security",
+          "confidence": "HIGH",
+          "impact": "MEDIUM",
+          "owasp": ["A03:2021 - Injection"],
+          "cwe": ["CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code ('Eval Injection')"],
+          "references": ["https://owasp.org/Top10/A03_2021-Injection"]
+        },
+        "severity": "ERROR",
+        "fingerprint": "e0d9c1f9d3f0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a",
+        "lines": "    return eval(user_input)"
+      }
+    },
+    {
+      "check_id": "python.lang.correctness.common-mistakes.is-comparison-string",
+      "path": "src/scout_app/compare.py",
+      "start": { "line": 42, "col": 8, "offset": 1200 },
+      "end": { "line": 42, "col": 24, "offset": 1216 },
+      "extra": {
+        "message": "Found 'is' comparison against a string literal; use '==' instead.",
+        "metadata": {
+          "category": "correctness",
+          "confidence": "MEDIUM",
+          "impact": "LOW",
+          "owasp": [],
+          "cwe": []
+        },
+        "severity": "WARNING",
+        "fingerprint": "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809",
+        "lines": "    if kind is \"user\":"
+      }
+    }
+  ],
+  "errors": [],
+  "paths": { "scanned": ["src/scout_app/expr.py", "src/scout_app/compare.py"] }
+}

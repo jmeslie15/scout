@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+  <testsuite name="pytest" errors="1" failures="1" skipped="1" tests="4" time="0.842" timestamp="2024-11-02T10:15:30.123456" hostname="scout-runner">
+    <testcase classname="tests.test_api" name="test_health" time="0.012" file="tests/test_api.py" line="10" />
+    <testcase classname="tests.test_api" name="test_create_user" time="0.034" file="tests/test_api.py" line="18">
+      <failure message="AssertionError: assert 422 == 201">def test_create_user(client):
+&gt;       assert response.status_code == 201
+E       assert 422 == 201
+E        +  where 422 = &lt;Response [422 Unprocessable Entity]&gt;.status_code</failure>
+    </testcase>
+    <testcase classname="tests.test_db" name="test_connect" time="0.501" file="tests/test_db.py" line="7">
+      <error message="RuntimeError: database is unavailable">def test_connect():
+&gt;       with connect(DATABASE_URL) as connection:
+E       RuntimeError: database is unavailable</error>
+    </testcase>
+    <testcase classname="tests.test_util" name="test_slow_path" time="0.000" file="tests/test_util.py" line="22">
+      <skipped type="pytest.skip" message="requires redis">requires redis</skipped>
+    </testcase>
+  </testsuite>
+</testsuites>

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <h1>{{ severity }} finding: {{ finding.title }}</h1>
+    <p>
+      <strong>Repository:</strong> {{ repository_full_name }}<br />
+      <strong>Category:</strong> {{ finding.category }}{% if locator %} &mdash; <code>{{ locator }}</code>{% endif %}<br />
+      <strong>Confidence:</strong> {{ finding.confidence }}
+    </p>
+
+    <h2>What Scout found</h2>
+    <p>{{ finding.description }}</p>
+
+    {% if finding.recommendation %}
+    <h2>Recommended action</h2>
+    <p>{{ finding.recommendation }}</p>
+    {% endif %}
+
+    <h2>Evidence</h2>
+    {% if evidence %}
+    <ul>
+      {% for item in evidence %}
+      <li>{{ item.summary }}{% if item.excerpt %} &mdash; <code>{{ item.excerpt }}</code>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p>No evidence was recorded; this finding is not machine-verified.</p>
+    {% endif %}
+
+    <h2>Job</h2>
+    <p><a href="{{ job_url }}">{{ job_url }}</a></p>
+  </body>
+</html>

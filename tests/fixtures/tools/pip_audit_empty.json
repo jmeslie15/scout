@@ -1,0 +1,7 @@
+{
+  "dependencies": [
+    { "name": "requests", "version": "2.32.3", "vulns": [] },
+    { "name": "certifi", "version": "2024.8.30", "vulns": [] }
+  ],
+  "fixes": []
+}

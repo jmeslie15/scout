@@ -1,0 +1,13 @@
+--- src/scout_app/api.py
++++ src/scout_app/api.py
+@@ -1,4 +1,4 @@
+-def handler(  request,  response):
++def handler(request, response):
+     return response
+--- src/scout_app/models.py
++++ src/scout_app/models.py
+@@ -10,3 +10,3 @@
+ class User:
+-    name:str
++    name: str
+2 files would be reformatted, 1 file already formatted

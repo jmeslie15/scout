@@ -1,0 +1,29 @@
+# {{ severity }} finding: {{ finding.title }}
+
+**Repository:** {{ repository_full_name }}
+**Category:** {{ finding.category }}{% if locator %} — `{{ locator }}`{% endif %}
+**Confidence:** {{ finding.confidence }}
+
+## What Scout found
+
+{{ finding.description }}
+
+{% if finding.recommendation %}
+## Recommended action
+
+{{ finding.recommendation }}
+{% endif %}
+
+## Evidence
+
+{% if evidence %}
+{% for item in evidence %}
+- {{ item.summary }}{% if item.excerpt %} — `{{ item.excerpt }}`{% endif %}
+{% endfor %}
+{% else %}
+- No evidence was recorded; this finding is not machine-verified.
+{% endif %}
+
+## Job
+
+{{ job_url }}

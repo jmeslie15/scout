@@ -1,0 +1,237 @@
+# =============================================================================
+# Scout — local development stack (Docker Compose spec, no top-level `version`)
+#
+# Fast path (mirrors `make up`): only the datastores, no Python image builds.
+#   docker compose -f infra/compose/docker-compose.yml up -d postgres redis
+#
+# Full stack (mirrors `make up-app`): adds api / orchestrator / worker, which
+# live behind the `app` profile so the fast path never builds Python images.
+#   docker compose -f infra/compose/docker-compose.yml --profile app up -d
+#
+# Configuration comes from the environment (see .env.example — copy it to .env).
+# There are NO credentials in this file; the datastore user/password/database
+# are dev-only local values and every secret is read from the environment.
+# =============================================================================
+name: scout
+
+# --- Shared building blocks --------------------------------------------------
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# Container-internal URLs deliberately override whatever `.env` provides: the
+# `.env` values point at localhost:<host port> for host-run processes, while
+# containers must reach the compose service names on the internal ports.
+x-app-environment: &app-environment
+  SCOUT_ENV: ${SCOUT_ENV:-development}
+  SCOUT_LOG_LEVEL: ${SCOUT_LOG_LEVEL:-INFO}
+  SCOUT_LOG_JSON: ${SCOUT_LOG_JSON:-false}
+  SCOUT_DATABASE_URL: postgresql+asyncpg://scout:scout@postgres:5432/scout
+  SCOUT_REDIS_URL: redis://redis:6379/0
+  SCOUT_PUBLIC_URL: ${SCOUT_PUBLIC_URL:-http://localhost:8000}
+  SCOUT_DASHBOARD_URL: ${SCOUT_DASHBOARD_URL:-http://localhost:5173}
+  SCOUT_ARTIFACT_ROOT: /app/var/artifacts
+  SCOUT_WORKSPACE_ROOT: /app/var/workspaces
+  SCOUT_LLM_DEFAULT_PROVIDER: ${SCOUT_LLM_DEFAULT_PROVIDER:-fake}
+  SCOUT_LLM_DEFAULT_MODEL: ${SCOUT_LLM_DEFAULT_MODEL:-fake-deterministic}
+  SCOUT_SANDBOX_BACKEND: ${SCOUT_SANDBOX_BACKEND:-local}
+  SCOUT_SANDBOX_IMAGE: ${SCOUT_SANDBOX_IMAGE:-scout-sandbox-python:3.12}
+
+x-app-build: &app-build
+  context: ../..
+  dockerfile: infra/docker/api.Dockerfile
+
+services:
+  # --- Datastores: the fast local path ---------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: scout-postgres
+    restart: unless-stopped
+    environment:
+      # Local development only. Override in the environment for anything else.
+      POSTGRES_DB: ${POSTGRES_DB:-scout}
+      POSTGRES_USER: ${POSTGRES_USER:-scout}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scout}
+    # 5433 on the host: 5432 is frequently already bound on macOS.
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scout} -d ${POSTGRES_DB:-scout} -h 127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    logging: *default-logging
+    networks:
+      - scout
+
+  redis:
+    image: redis:7-alpine
+    container_name: scout-redis
+    restart: unless-stopped
+    # AOF persistence so jobs survive a container restart (no in-memory-only
+    # state is allowed on the control plane).
+    command: ["redis-server", "--appendonly", "yes"]
+    # 6380 on the host to avoid colliding with a locally installed Redis.
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    logging: *default-logging
+    networks:
+      - scout
+
+  # --- Applications: behind the `app` profile --------------------------------
+  api:
+    profiles: ["app"]
+    build:
+      <<: *app-build
+      dockerfile: infra/docker/api.Dockerfile
+      args:
+        APP_PATH: apps/api
+        APP_PACKAGE: scout_api
+    image: scout-api:local
+    container_name: scout-api
+    restart: unless-stopped
+    command:
+      - uvicorn
+      - scout_api.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --reload
+    env_file:
+      # Optional so the stack still starts before `.env` exists.
+      - path: ../../.env
+        required: false
+    environment:
+      <<: *app-environment
+    ports:
+      - "8000:8000"
+    volumes:
+      # Bind-mount the *sources* for --reload. Deliberately NOT `../..:/app`:
+      # mounting the repository root over /app would shadow the image's
+      # /app/.venv, leaving no `uvicorn`/`uv` on PATH. Keep the container's own
+      # locked virtualenv and overlay only the code that changes.
+      - ../../apps:/app/apps
+      - ../../packages:/app/packages
+      - ../../migrations:/app/migrations
+      - ../../prompts:/app/prompts
+      # Runtime state lives in named volumes (and stays out of the repo).
+      - artifacts:/app/var/artifacts
+      - workspaces:/app/var/workspaces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status == 200 else 1)"
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    logging: *default-logging
+    networks:
+      - scout
+
+  orchestrator:
+    profiles: ["app"]
+    build:
+      <<: *app-build
+      dockerfile: infra/docker/orchestrator.Dockerfile
+      args:
+        APP_PATH: apps/orchestrator
+        APP_PACKAGE: scout_orchestrator
+    image: scout-orchestrator:local
+    container_name: scout-orchestrator
+    restart: unless-stopped
+    # No [project.scripts] entry points exist; modules are the interface.
+    command: ["python", "-m", "scout_orchestrator"]
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      <<: *app-environment
+    volumes:
+      # Sources only: see the api service for why the repo root is not mounted.
+      - ../../apps:/app/apps
+      - ../../packages:/app/packages
+      - ../../prompts:/app/prompts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging: *default-logging
+    networks:
+      - scout
+
+  worker:
+    profiles: ["app"]
+    build:
+      <<: *app-build
+      dockerfile: infra/docker/worker.Dockerfile
+      args:
+        APP_PATH: apps/worker
+        APP_PACKAGE: scout_worker
+    image: scout-worker:local
+    container_name: scout-worker
+    restart: unless-stopped
+    command: ["python", "-m", "scout_worker"]
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      <<: *app-environment
+    volumes:
+      # Sources only: see the api service for why the repo root is not mounted.
+      - ../../apps:/app/apps
+      - ../../packages:/app/packages
+      - ../../prompts:/app/prompts
+      - artifacts:/app/var/artifacts
+      - workspaces:/app/var/workspaces
+      # The execution plane spawns sandbox containers; this is the ONLY reason
+      # the worker needs the host Docker socket. It stays out of the api and
+      # orchestrator services on purpose.
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging: *default-logging
+    networks:
+      - scout
+
+volumes:
+  postgres-data:
+    name: scout-postgres-data
+  redis-data:
+    name: scout-redis-data
+  # Artifacts/workspaces written by the control plane; hosted by Docker so the
+  # non-root container user owns them without touching the host repository.
+  artifacts:
+    name: scout-artifacts
+  workspaces:
+    name: scout-workspaces
+
+networks:
+  scout:
+    name: scout
+    driver: bridge

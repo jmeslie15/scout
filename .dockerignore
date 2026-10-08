@@ -1,0 +1,68 @@
+# =============================================================================
+# Docker build context exclusions for Scout.
+#
+# Keep the build context small and, more importantly, keep local secrets and
+# runtime state OUT of every image. Nothing here is copied into an image.
+# =============================================================================
+
+# --- VCS ---------------------------------------------------------------------
+.git
+.gitignore
+.gitattributes
+.github
+
+# --- Python environments / build output --------------------------------------
+.venv
+venv
+**/__pycache__
+**/*.py[cod]
+*.egg-info
+.eggs
+build
+dist
+.python-version
+
+# --- Tool caches (never useful inside an image) ------------------------------
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.hypothesis
+.coverage
+.coverage.*
+htmlcov
+coverage.xml
+
+# --- Node --------------------------------------------------------------------
+node_modules
+**/node_modules
+apps/dashboard/dist
+apps/dashboard/.vite
+*.tsbuildinfo
+.pnpm-store
+
+# --- Scout runtime state -----------------------------------------------------
+var
+*.log
+logs
+
+# --- Secrets / local configuration -------------------------------------------
+# `.env` is gitignored and must never enter an image. `.env.example` is
+# deliberately NOT excluded: it carries no credentials and documents config.
+.env
+.env.*
+!.env.example
+*.pem
+*.p8
+*.key
+secrets
+.scout/local.yaml
+
+# --- Editor / OS noise -------------------------------------------------------
+.DS_Store
+.idea
+.vscode
+*.swp
+
+# --- Not needed at runtime (the development stack bind-mounts the repo) ------
+docs
+tests

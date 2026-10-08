@@ -1,0 +1,3 @@
+Would reformat: src/scout_app/api.py
+Would reformat: src/scout_app/models.py
+2 files would be reformatted, 1 file already formatted

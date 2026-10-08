@@ -1,0 +1,37 @@
+# Verification complete — {{ recommendation }}
+
+**Repository:** {{ repository_full_name }} — PR #{{ pull_request_number }}
+**Commit:** `{{ commit_sha }}`
+**Severity:** {{ severity }}
+
+## Summary
+
+{{ summary }}
+
+## Test results
+
+{{ tests.passed }} passed, {{ tests.failed }} failed, {{ tests.skipped }} skipped ({{ tests.total }} total)
+
+{% if severity_counts %}
+## Findings by severity
+
+{% for name, count in severity_counts.items() %}
+- {{ name }}: {{ count }}
+{% endfor %}
+{% endif %}
+
+## Recommendation
+
+{{ recommendation }}
+
+{% if unverified_areas %}
+## Not verified
+
+{% for area in unverified_areas %}
+- {{ area }}
+{% endfor %}
+{% endif %}
+
+## Job
+
+{{ job_url }}

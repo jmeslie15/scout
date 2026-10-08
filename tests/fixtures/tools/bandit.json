@@ -1,0 +1,53 @@
+{
+  "errors": [],
+  "generated_at": "2024-11-02T10:15:30Z",
+  "metrics": {
+    "_totals": {
+      "CONFIDENCE.HIGH": 1,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 1,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 1,
+      "SEVERITY.MEDIUM": 1,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 412,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "src/runner.py": { "loc": 210, "nosec": 0, "skipped_tests": 0 },
+    "src/settings.py": { "loc": 202, "nosec": 0, "skipped_tests": 0 }
+  },
+  "results": [
+    {
+      "code": "subprocess.Popen(command, shell=True)\n",
+      "col_offset": 4,
+      "end_col_offset": 47,
+      "filename": "src/runner.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": { "id": 78, "link": "https://cwe.mitre.org/data/definitions/78.html" },
+      "issue_severity": "MEDIUM",
+      "issue_text": "subprocess call with shell=True identified, security issue.",
+      "line_number": 27,
+      "line_range": [27],
+      "more_info": "https://bandit.readthedocs.io/en/1.7.10/plugins/b602_subprocess_popen_with_shell_equals_true.html",
+      "test_id": "B602",
+      "test_name": "subprocess_popen_with_shell_equals_true"
+    },
+    {
+      "code": "DEFAULT_PASSWORD = \"hunter2\"\n",
+      "col_offset": 0,
+      "end_col_offset": 31,
+      "filename": "src/settings.py",
+      "issue_confidence": "MEDIUM",
+      "issue_cwe": { "id": 259, "link": "https://cwe.mitre.org/data/definitions/259.html" },
+      "issue_severity": "LOW",
+      "issue_text": "Possible hardcoded password: 'hunter2'",
+      "line_number": 41,
+      "line_range": [41],
+      "more_info": "https://bandit.readthedocs.io/en/1.7.10/plugins/b105_hardcoded_password_string.html",
+      "test_id": "B105",
+      "test_name": "hardcoded_password_string"
+    }
+  ]
+}

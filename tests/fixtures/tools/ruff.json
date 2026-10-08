@@ -1,0 +1,56 @@
+[
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": { "column": 12, "row": 3 },
+    "filename": "src/scout_app/api.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": { "column": 12, "row": 3 },
+          "location": { "column": 1, "row": 3 }
+        }
+      ],
+      "message": "Remove unused import: `os`"
+    },
+    "location": { "column": 8, "row": 3 },
+    "message": "`os` imported but unused",
+    "noqa_row": 3,
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "E501",
+    "end_location": { "column": 118, "row": 27 },
+    "filename": "src/scout_app/api.py",
+    "fix": null,
+    "location": { "column": 101, "row": 27 },
+    "message": "Line too long (117 > 100)",
+    "noqa_row": 27,
+    "url": "https://docs.astral.sh/ruff/rules/line-too-long"
+  },
+  {
+    "cell": null,
+    "code": "S105",
+    "end_location": { "column": 34, "row": 41 },
+    "filename": "src/scout_app/settings.py",
+    "fix": null,
+    "location": { "column": 12, "row": 41 },
+    "message": "Possible hardcoded password assigned to: \"DEFAULT_PASSWORD\"",
+    "noqa_row": 41,
+    "url": "https://docs.astral.sh/ruff/rules/hardcoded-password-string"
+  },
+  {
+    "cell": null,
+    "code": "E999",
+    "end_location": { "column": 1, "row": 12 },
+    "filename": "src/scout_app/broken.py",
+    "fix": null,
+    "location": { "column": 18, "row": 12 },
+    "message": "SyntaxError: Expected an expression",
+    "noqa_row": 12,
+    "url": "https://docs.astral.sh/ruff/rules/invalid-syntax"
+  }
+]

@@ -1,0 +1,48 @@
+# {{ question.title }}
+
+**Severity:** {{ severity }}
+**Repository:** {{ repository_full_name }}{% if pull_request_number %} — PR #{{ pull_request_number }}{% endif %}
+
+## The question
+
+{{ question.description }}
+
+## Why Scout is asking
+
+{{ why_asking }}
+
+{% if investigation_summary %}
+## What Scout already checked
+
+{{ investigation_summary }}
+{% endif %}
+
+## Relevant evidence
+
+{% if evidence %}
+{% for item in evidence %}
+- {{ item.summary }}{% if item.file_path %} — `{{ item.file_path }}{% if item.line_start %}:{{ item.line_start }}{% endif %}`{% endif %}
+{% endfor %}
+{% else %}
+- No evidence was recorded; this question rests on reasoning alone and should be treated as such.
+{% endif %}
+
+## Suggested options
+
+{% if options %}
+{% for option in options %}
+{{ loop.index }}. {{ option }}
+{% endfor %}
+{% else %}
+- No closed-form options were offered; record a free-form decision.
+{% endif %}
+
+{% if default_assumption %}
+## Default if unanswered
+
+{{ default_assumption }}
+{% endif %}
+
+## Job
+
+{{ job_url }}

@@ -1,0 +1,145 @@
+[project]
+name = "scout-workspace"
+version = "0.1.0"
+description = "Edrevel AI Scout — engineering verification platform (uv workspace root)"
+readme = "README.md"
+requires-python = ">=3.12"
+
+# The workspace root is a virtual project: it owns the shared dev toolchain and
+# pins the union of runtime dependencies, but is not itself installed.
+dependencies = [
+    "scout-domain",
+    "scout-persistence",
+    "scout-observability",
+    "scout-github",
+    "scout-sandbox",
+    "scout-tools",
+    "scout-llm",
+    "scout-knowledge",
+    "scout-agents",
+    "scout-notifications",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "pytest-timeout>=2.3",
+    "respx>=0.21",
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "types-pyyaml>=6.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+scout-agents = { workspace = true }
+scout-api = { workspace = true }
+scout-domain = { workspace = true }
+scout-github = { workspace = true }
+scout-knowledge = { workspace = true }
+scout-llm = { workspace = true }
+scout-notifications = { workspace = true }
+scout-observability = { workspace = true }
+scout-orchestrator = { workspace = true }
+scout-persistence = { workspace = true }
+scout-sandbox = { workspace = true }
+scout-tools = { workspace = true }
+scout-worker = { workspace = true }
+
+[tool.uv.workspace]
+members = ["packages/*", "apps/api", "apps/orchestrator", "apps/worker"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+# `importlib` import mode derives a unique module name from each file's path, so two test
+# files with the same basename in different directories (which Scout has, deliberately:
+# one `test_ids.py` per package) cannot collide. It also removes the need for `__init__.py`
+# in every test directory.
+addopts = "-ra --strict-markers --strict-config --import-mode=importlib"
+markers = [
+    "unit: a fast, hermetic test with no external dependency (the default for tests/unit)",
+    "integration: requires PostgreSQL/Redis from docker compose",
+    "contract: validates external payload/schema contracts",
+    "e2e: full vertical slice through the platform",
+    "sandbox: requires a container runtime",
+    "slow: takes more than a few seconds",
+]
+filterwarnings = ["error::DeprecationWarning:scout_*"]
+
+[tool.coverage.run]
+branch = true
+source = ["packages", "apps"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["apps/dashboard", "migrations/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "N", "UP", "B", "A", "C4", "DTZ", "T20", "EM",
+    "ISC", "ICN", "LOG", "G", "PIE", "PT", "RET", "SIM", "TID", "TCH",
+    "ARG", "PTH", "ERA", "PL", "TRY", "FLY", "RUF",
+]
+ignore = [
+    "TRY003",  # long messages outside exception class: fine for domain errors
+    "EM101", "EM102",  # string literal in exception: fine for domain errors
+    "PLR0913",  # many arguments: explicit context objects and FastAPI handlers
+    "PLR0917",  # many positional arguments: same rationale
+    "TC001", "TC002", "TC003",  # runtime-import pydantic models are deliberate
+    "A003",  # "id"/"type" shadow builtins: required by the external domain contract
+    # Function-local imports are a deliberate, documented pattern in Scout, used at exactly
+    # three kinds of boundary:
+    #   1. Keeping `import <pkg>` side-effect free -- `scout_api.__init__` must not build a
+    #      FastAPI app or open a connection pool merely because something imported it.
+    #   2. Optional packages (`scout_llm`, `scout_knowledge`, `scout_notifications`,
+    #      `scout_tools.tools`) which are imported defensively so that an incomplete or
+    #      absent optional dependency cannot break the platform's core paths.
+    #   3. Breaking import cycles between the framework and the storage/transport layers.
+    # Every such import carries an explanatory comment, and the alternative -- a blanket
+    # `TID`-style indirection module -- would be exactly the framework magic Rule 13 forbids.
+    "PLC0415",
+    # Scout's exception names read as the condition that occurred ("InvalidJobTransition",
+    # "PolicyViolation", "SandboxTimeout"), which is the vocabulary the spec and the domain
+    # model use. A mandatory "Error" suffix would make every raise site read worse without
+    # adding information, and `ScoutDomainError` already names the hierarchy explicitly.
+    "N818",
+    # Try/else style, nested-if collapsing, and contextlib.suppress are readability
+    # preferences. Where one of these forms is genuinely clearer the code already uses it;
+    # there is no correctness argument for forcing the other.
+    "TRY300",
+    "SIM102",
+    "SIM105",
+    # Numeric literals in comparisons are named constants where the value carries domain
+    # meaning (`LARGE_CHANGE_LINES`, `_STREAM_ENTRY_ARITY`). Where a literal is used it is
+    # self-describing (a POSIX signal number, a tool's documented exit code).
+    "PLR2004",
+    "TRY301",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "PLR2004", "ARG001", "ARG002", "T20"]
+"migrations/**" = ["ALL"]
+"scripts/**" = ["T20"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["scout_domain", "scout_persistence", "scout_observability", "scout_github", "scout_sandbox", "scout_tools", "scout_llm", "scout_knowledge", "scout_agents", "scout_notifications", "scout_api", "scout_orchestrator", "scout_worker"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+files = ["packages", "apps/api", "apps/orchestrator", "apps/worker"]
+exclude = ["apps/dashboard"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
