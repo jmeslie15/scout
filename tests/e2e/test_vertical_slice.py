@@ -336,7 +336,16 @@ async def test_vertical_slice_passing_change(
     assert report.base_sha == passing_repo.base_sha
     assert report.tests.passed >= 2
     assert report.tests.failed == 0
-    assert report.tests.change_is_covered is True
+    # No coverage tool is configured, so whether a test *executes* the changed code is undetermined.
+    # The field is deliberately None rather than True or False; what Scout did observe -- that this
+    # change added a test -- is stated as its own observation below.
+    assert report.tests.change_is_covered is None
+    assert report.tests.uncovered_changed_paths == []
+    coverage_section = next(s for s in report.sections if s.key == "testing.change_coverage")
+    assert "did add or modify a test" in coverage_section.summary
+    assert not any(
+        "without adding or modifying any test" in note for note in report.known_limitations
+    )
     assert report.unverified_areas == []
     assert report.open_questions == []
     assert report.all_findings == []
@@ -403,9 +412,13 @@ async def test_vertical_slice_failing_change(
     # The finding about the failure is machine-backed, so it is a fact rather than a judgement.
     assert any(finding.category.value == "TESTS" for finding in report.all_findings)
     assert any(finding.is_machine_verified for finding in report.all_findings)
-    # Spec section 67: the change touched source without touching a test, and the report says so.
-    assert report.tests.change_is_covered is False
-    assert report.tests.uncovered_changed_paths == ["widget.py"]
+    # Spec section 67, stated precisely: the change touched source without touching a test, so Scout
+    # says that -- and does not claim the existing suite fails to exercise it, which only a coverage
+    # measurement could establish. The test that failed *does* exercise the changed function.
+    assert report.tests.change_is_covered is None
+    assert report.tests.uncovered_changed_paths == []
+    assert any("without adding or modifying any test" in note for note in report.known_limitations)
+    assert any("widget.py" in note and "without" in note for note in report.known_limitations)
 
     assert result.github is not None
     check_run = result.github.check_runs[0]

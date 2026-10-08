@@ -139,9 +139,9 @@ def _uncovered_change_finding(
 ) -> Finding:
     """Build the finding a repository asks for when code changes without a test edit (spec 67).
 
-    The claim is deliberately narrow: the change modified these source files and no test file. It does
-    not assert that no test executes them -- only a coverage measurement could support that -- and the
-    description says so, so the finding cannot be read as a coverage verdict.
+    The claim is deliberately narrow: the change modified these source files and no test file. It
+    does not assert that no test executes them -- only a coverage measurement could support that --
+    and the description says so, so the finding cannot be read as a coverage verdict.
     """
     test_run = next(
         (result for result in bundle.results if result.tool in {"pytest", "vitest", "jest"}),
