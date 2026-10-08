@@ -3,23 +3,25 @@
     GitHub PR -> webhook -> create job -> checkout -> run tests -> store results
               -> generate report -> GitHub check
 
-This is the test that answers "does Scout actually work?" rather than "do its parts work?". It drives
-the real control plane -- the real :class:`~scout_orchestrator.orchestrator.Orchestrator`, the real
-stage implementations, the real local sandbox, the real repository schema, and the real Redis Streams
-transport -- over a real git repository and a real PostgreSQL.
+This is the test that answers "does Scout actually work?" rather than "do its parts work?". It
+drives the real control plane -- the real :class:`~scout_orchestrator.orchestrator.Orchestrator`,
+the real stage implementations, the real local sandbox, the real repository schema, and the real
+Redis Streams transport -- over a real git repository and a real PostgreSQL.
 
-Four properties make it honest rather than a demonstration:
+Three properties make it honest rather than a demonstration:
 
-* the **repository is real**, built by :mod:`support` with two commits and a bare remote that accepts
-  a fetch by SHA, so the checkout path Scout uses in production is the one under test;
+* the **repository is real**, built by :mod:`support` with two commits and a bare remote that
+  accepts a fetch by SHA, so the checkout path Scout uses in production is the one under test;
 * the **job is created from a webhook payload** parsed by ``scout_github``, not inserted by hand, so
   the SHA the report names is the SHA GitHub told Scout about;
 * the **tests are the repository's own**, executed by ``pytest`` inside a sandbox, and the artifact
-  bytes are read back out of the store to prove the evidence is really there;
-* the **recommendation is not asserted from a fixture** but produced by the derivation, and the
-  second case changes the repository so that derivation has to reach a different answer.
+  bytes are read back out of the store to prove the evidence is really there.
 
-The second case is the important one: a slice that only ever proves the happy path is a demo.
+Scope note: section 83 does **not** include acceptance-criteria verification. That is section
+85's slice, and the feature-verification agent that would derive a procedure per criterion is not
+wired yet, so this slice switches the stage off by configuration -- recorded as a skip, with a
+reason, and listed in the report as a limitation. The third test re-enables it to prove the gate
+that makes ``REQUIRES_HUMAN_REVIEW`` unavoidable is intact.
 """
 
 from __future__ import annotations
@@ -42,18 +44,18 @@ from scout_github import (
     FakeGitHubClient,
     parse_pull_request_event,
 )
+from scout_orchestrator.orchestrator import Orchestrator
+from scout_orchestrator.settings import Settings
 from scout_persistence.mapping import to_artifact
 from scout_persistence.queue import JobMessage, RedisJobQueue
 from scout_persistence.unit_of_work import UnitOfWork
 from scout_tools.artifacts import LocalArtifactStore
 
-from scout_orchestrator.orchestrator import Orchestrator
-from scout_orchestrator.settings import Settings
-
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     from scout_domain.models.artifact import Artifact
+    from scout_persistence.tables import JobStageRow
 
 pytestmark = pytest.mark.e2e
 
@@ -66,20 +68,35 @@ class Slice:
 
     job_id: str
     head_sha: str
-    stages: dict[str, list[str]] = field(default_factory=dict)
-    tool_by_name: dict[str, object] = field(default_factory=dict)
-    artifact_by_kind: dict[str, object] = field(default_factory=dict)
+    stages: dict[str, list[JobStageRow]] = field(default_factory=dict)
+    tools: dict[str, object] = field(default_factory=dict)
+    artifacts: list[Artifact] = field(default_factory=list)
     report: VerificationReport | None = None
     github: FakeGitHubClient | None = None
     job_status: str = ""
     audit_actions: list[str] = field(default_factory=list)
 
+    def stage_outcomes(self, stage: JobStatus) -> list[str]:
+        """The recorded outcomes for ``stage``, in order."""
+        return [str(row.outcome) for row in self.stages.get(stage.value, [])]
+
+    def stage_skip_reason(self, stage: JobStatus) -> str | None:
+        """The recorded skip reason for ``stage``, or ``None``."""
+        rows = self.stages.get(stage.value, [])
+        return None if not rows else rows[0].skip_reason
+
+    def artifact_of_kind(self, kind: ArtifactKind) -> Artifact:
+        """The artifact of ``kind``, asserting exactly one was recorded."""
+        matches = [artifact for artifact in self.artifacts if artifact.kind is kind]
+        assert len(matches) == 1, f"expected exactly one {kind.value} artifact, got {len(matches)}"
+        return matches[0]
+
 
 def _webhook_payload(fixture: support.GitFixture) -> dict[str, object]:
     """Build a GitHub ``pull_request`` delivery for the fixture's real SHAs.
 
-    Shaped like the real payload rather than like Scout's model, so the parser is genuinely exercised:
-    a parser that only accepts its own output proves nothing.
+    Shaped like the real payload rather than like Scout's model, so the parser is genuinely
+    exercised: a parser that only accepts its own output proves nothing.
     """
     return {
         "action": "opened",
@@ -100,7 +117,9 @@ def _webhook_payload(fixture: support.GitFixture) -> dict[str, object]:
             "state": "open",
             "draft": False,
             "merged": False,
-            "html_url": f"https://github.com/{fixture.full_name}/pull/{fixture.pull_request_number}",
+            "html_url": (
+                f"https://github.com/{fixture.full_name}/pull/{fixture.pull_request_number}"
+            ),
             "user": {"login": "octocat"},
             "base": {"ref": "main", "sha": fixture.base_sha},
             "head": {"ref": "scout/multiply", "sha": fixture.head_sha},
@@ -143,8 +162,7 @@ async def _create_job_from_webhook(
     async with UnitOfWork(session_factory) as uow:
         row, created = await uow.jobs.create_unless_exists(job)
         assert created is True, "the delivery should create exactly one job"
-        job_id = row.id
-    return job_id
+        return row.id
 
 
 async def _run_slice(
@@ -171,8 +189,8 @@ async def _run_slice(
         sandbox_network="none",
         notifications_enabled=False,
         execution_mode="in_process",
-        # The remote is a local path, which is what makes the slice offline: the checkout path is the
-        # production one, only the transport differs.
+        # The remote is a local path, which is what makes the slice offline: the checkout path is
+        # the production one, only the transport differs.
         git_base_url=f"file://{fixture.root / 'remotes'}",
         dashboard_url="http://dashboard.test",
         lease_ttl_seconds=120,
@@ -238,21 +256,19 @@ async def _collect(
         slice_result.job_status = str(job_row.status)
 
         for stage_row in await uow.stages.list_for_job(job_id):
-            slice_result.stages.setdefault(str(stage_row.stage), []).append(str(stage_row.outcome))
+            slice_result.stages.setdefault(str(stage_row.stage), []).append(stage_row)
 
         for tool_row in await uow.tool_runs.list_for_job(job_id):
-            slice_result.tool_by_name[str(tool_row.tool)] = tool_row
+            slice_result.tools[str(tool_row.tool)] = tool_row
 
-        for artifact_row in await uow.artifacts.list_for_job(job_id):
-            artifact = to_artifact(artifact_row)
-            slice_result.artifact_by_kind.setdefault(artifact.kind.value, artifact)
-
+        slice_result.artifacts = [
+            to_artifact(row) for row in await uow.artifacts.list_for_job(job_id)
+        ]
         slice_result.audit_actions = [
             str(event.action) for event in await uow.audit_events.list_for_job(job_id)
         ]
 
-    report_artifact = slice_result.artifact_by_kind.get(ArtifactKind.VERIFICATION_REPORT.value)
-    assert report_artifact is not None, "the report must be stored as evidence"
+    report_artifact = slice_result.artifact_of_kind(ArtifactKind.VERIFICATION_REPORT)
     payload = json.loads(store.get_bytes(report_artifact).decode("utf-8"))
     slice_result.report = VerificationReport.model_validate(payload)
     return slice_result
@@ -285,22 +301,32 @@ async def test_vertical_slice_passing_change(
     assert len(result.head_sha) == HEAD_SHA_LENGTH
 
     # 2. PREPARING and TESTING succeeded. Both are recorded rows, not in-memory assertions.
-    assert result.stages[JobStatus.PREPARING.value] == [JobStageOutcome.SUCCEEDED.value]
-    assert result.stages[JobStatus.TESTING.value] == [JobStageOutcome.SUCCEEDED.value]
-    assert result.stages[JobStatus.INVESTIGATING.value] == [JobStageOutcome.SUCCEEDED.value]
-    # SECURITY_SCANNING is skipped by the fixture's repository configuration, with a reason.
-    assert result.stages[JobStatus.SECURITY_SCANNING.value] == [JobStageOutcome.SKIPPED.value]
+    assert result.stage_outcomes(JobStatus.PREPARING) == [JobStageOutcome.SUCCEEDED.value]
+    assert result.stage_outcomes(JobStatus.TESTING) == [JobStageOutcome.SUCCEEDED.value]
+    assert result.stage_outcomes(JobStatus.INVESTIGATING) == [JobStageOutcome.SUCCEEDED.value]
+
+    # The two checks this slice does not cover are skipped *with a recorded reason*: an
+    # unexplained omission is exactly what spec section 41 forbids.
+    assert result.stage_outcomes(JobStatus.SECURITY_SCANNING) == [JobStageOutcome.SKIPPED.value]
+    assert "engineering.yaml" in (result.stage_skip_reason(JobStatus.SECURITY_SCANNING) or "")
+    assert result.stage_outcomes(JobStatus.FEATURE_VERIFYING) == [JobStageOutcome.SKIPPED.value]
+    assert "engineering.yaml" in (result.stage_skip_reason(JobStatus.FEATURE_VERIFYING) or "")
 
     # 3. The test runner really ran and reported a pass.
-    pytest_row = result.tool_by_name["pytest"]
+    pytest_row = result.tools["pytest"]
     assert pytest_row.status == ToolStatus.PASSED.value  # type: ignore[attr-defined]
     assert pytest_row.exit_code == 0  # type: ignore[attr-defined]
     assert pytest_row.stdout_artifact_id  # type: ignore[attr-defined]
+    assert pytest_row.report_artifact_id  # type: ignore[attr-defined]
 
     # 4. The artifact bytes are readable from the store and contain pytest's own output.
-    stdout = _artifact_bytes(result, store_root=artifact_root, artifact_id=pytest_row.stdout_artifact_id)  # type: ignore[attr-defined]
-    assert "passed" in stdout
-    assert "multiply" in _all_text(result, artifact_root)
+    store = LocalArtifactStore(artifact_root)
+    stdout_text = store.get_bytes(result.artifact_of_kind(ArtifactKind.TOOL_STDOUT)).decode(
+        "utf-8", errors="replace"
+    )
+    assert "passed" in stdout_text
+    # The pinned diff is evidence too, and it names the files the report talks about.
+    assert b"widget.py" in store.get_bytes(result.artifact_of_kind(ArtifactKind.DIFF))
 
     # 5. The report was produced from the evidence, validated, and recommends PASS.
     assert result.report is not None
@@ -310,12 +336,13 @@ async def test_vertical_slice_passing_change(
     assert report.base_sha == passing_repo.base_sha
     assert report.tests.passed >= 2
     assert report.tests.failed == 0
+    assert report.tests.change_is_covered is True
     assert report.unverified_areas == []
     assert report.open_questions == []
     assert report.all_findings == []
-    # The feature verification used the PR body and matched a passing test by execution.
-    assert report.feature_verification
-    assert all(criterion.status.value == "passed" for criterion in report.feature_verification)
+    # No criterion was checked, so none is claimed -- and the opt-out is stated, not hidden.
+    assert report.feature_verification == []
+    assert any("feature verification is disabled" in note for note in report.known_limitations)
 
     # 6. The GitHub check was created with the conclusion the recommendation implies.
     assert result.github is not None
@@ -346,8 +373,8 @@ async def test_vertical_slice_failing_change(
 ) -> None:
     """A change whose own suite fails reaches FAIL and a failing GitHub check.
 
-    This is the case that proves the slice is real: the same code path, the same stages, and the same
-    derivation, with a repository that behaves differently -- and a different verdict.
+    This is the case that proves the slice is real: the same code path, the same stages, and the
+    same derivation, with a repository that behaves differently -- and a different verdict.
     """
     result = await _run_slice(
         fixture=failing_repo,
@@ -358,15 +385,16 @@ async def test_vertical_slice_failing_change(
         stream_suffix="failing",
     )
 
-    assert result.stages[JobStatus.PREPARING.value] == [JobStageOutcome.SUCCEEDED.value]
-    assert result.stages[JobStatus.TESTING.value] == [JobStageOutcome.SUCCEEDED.value]
+    assert result.stage_outcomes(JobStatus.PREPARING) == [JobStageOutcome.SUCCEEDED.value]
+    assert result.stage_outcomes(JobStatus.TESTING) == [JobStageOutcome.SUCCEEDED.value]
 
-    pytest_row = result.tool_by_name["pytest"]
+    pytest_row = result.tools["pytest"]
     assert pytest_row.status == ToolStatus.FAILED.value  # type: ignore[attr-defined]
     assert pytest_row.exit_code == 1  # type: ignore[attr-defined]
 
-    stdout = _artifact_bytes(result, store_root=artifact_root, artifact_id=pytest_row.stdout_artifact_id)  # type: ignore[attr-defined]
-    assert "failed" in stdout
+    store = LocalArtifactStore(artifact_root)
+    stdout = store.get_bytes(result.artifact_of_kind(ArtifactKind.TOOL_STDOUT))
+    assert b"failed" in stdout
 
     assert result.report is not None
     report = result.report
@@ -385,32 +413,63 @@ async def test_vertical_slice_failing_change(
 
 
 # --------------------------------------------------------------------------------------
-# Helpers
+# Case 3: the acceptance-criteria gate is real, not bypassed
 # --------------------------------------------------------------------------------------
 
 
-def _artifact_bytes(result: Slice, *, store_root: Path, artifact_id: str) -> str:
-    """Read one artifact's bytes back out of the content-addressed store."""
-    store = LocalArtifactStore(store_root)
-    artifact = _artifact_by_id(result, artifact_id)
-    return store.get_bytes(artifact).decode("utf-8", errors="replace")
+async def test_vertical_slice_prose_criteria_require_human_review(
+    verifying_repo: support.GitFixture,
+    session_factory: async_sessionmaker[AsyncSession],
+    artifact_root: Path,
+    workspace_root: Path,
+    redis_server_url: str,
+) -> None:
+    """A clean change whose criteria exist only as prose cannot reach PASS.
 
+    This is the test that would catch anyone weakening the gate. The repository is the *passing*
+    one with feature verification switched on, so the only thing between a clean run and ``PASS``
+    is that the pull-request description states requirements Scout has no procedure for. The
+    correct answer is ``REQUIRES_HUMAN_REVIEW`` with a ``neutral`` check -- never ``success``,
+    which would let an unverified change look verified (spec sections 23, 25, and 2).
+    """
+    result = await _run_slice(
+        fixture=verifying_repo,
+        session_factory=session_factory,
+        artifact_root=artifact_root,
+        workspace_root=workspace_root,
+        redis_server_url=redis_server_url,
+        stream_suffix="verifying",
+    )
 
-def _artifact_by_id(result: Slice, artifact_id: str) -> Artifact:
-    """Find an artifact record by id among those the run produced."""
-    for artifact in result.artifact_by_kind.values():
-        if artifact.id == artifact_id:
-            return artifact
-    raise AssertionError(f"artifact {artifact_id} was not recorded for this job")
+    # The stage ran, because the repository asked for it.
+    assert result.stage_outcomes(JobStatus.FEATURE_VERIFYING) == [JobStageOutcome.SUCCEEDED.value]
+    # The suite still passed: this is not a failing-change test.
+    assert result.tools["pytest"].status == ToolStatus.PASSED.value  # type: ignore[attr-defined]
 
+    assert result.report is not None
+    report = result.report
 
-def _all_text(result: Slice, store_root: Path) -> str:
-    """Concatenate every stored artifact's text, for a coarse content assertion."""
-    store = LocalArtifactStore(store_root)
-    chunks: list[str] = []
-    for artifact in result.artifact_by_kind.values():
-        try:
-            chunks.append(store.get_bytes(artifact).decode("utf-8", errors="replace"))
-        except FileNotFoundError:  # pragma: no cover - a missing blob is a real failure elsewhere
-            continue
-    return "\n".join(chunks)
+    # Criteria were extracted from the pull-request description, and none of them passed.
+    assert report.feature_verification, "the PR body states requirements"
+    assert all(
+        criterion.status.value == "not_verified" for criterion in report.feature_verification
+    )
+    assert not any(criterion.status.value == "passed" for criterion in report.feature_verification)
+    # A passed criterion must be impossible without evidence; the validator is what enforces it.
+    assert all(criterion.evidence == [] for criterion in report.feature_verification)
+
+    # The unverified criteria become an explicit unverified area, which bars PASS.
+    assert report.unverified_areas
+    assert any("criterion" in area for area in report.unverified_areas)
+    assert report.recommendation is Recommendation.REQUIRES_HUMAN_REVIEW
+
+    # The overlapping test is recorded as a *lead*, not as a verification.
+    assert any(
+        "overlaps this criterion" in criterion.notes for criterion in report.feature_verification
+    )
+
+    assert result.github is not None
+    check_run = result.github.check_runs[0]
+    assert check_run.conclusion == CheckRunConclusion.NEUTRAL.value
+    # A neutral conclusion must not read as a pass anywhere in the summary.
+    assert "REQUIRES_HUMAN_REVIEW" in (check_run.output.summary or "")

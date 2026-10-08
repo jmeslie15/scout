@@ -222,7 +222,7 @@ def test_resume_invariant_rejects_a_stale_status(uow: FakeUnitOfWork) -> None:
 
     assert excinfo.value.context["status"] == JobStatus.PREPARING.value
     assert excinfo.value.context["next_stage"] == JobStatus.REVIEWING.value
-    assert excinfo.value.context["latest_resolved_stage"] == JobStatus.ANALYZING.value
+    assert excinfo.value.context["stages_completed_ahead_of_status"] == [JobStatus.ANALYZING.value]
 
 
 def test_latest_resolved_stage_ignores_non_pipeline_statuses() -> None:

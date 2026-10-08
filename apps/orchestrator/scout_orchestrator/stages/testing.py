@@ -20,12 +20,14 @@ from scout_domain.enums import EvidenceKind, FindingCategory, JobStatus, Severit
 from scout_domain.ids import IdKind, new_id
 from scout_domain.models.evidence import EvidenceReference
 from scout_domain.models.finding import Finding, FindingOrigin
-from scout_domain.models.report import ReportSection, ReportSectionStatus, TestOutcomeSummary
+from scout_domain.models.report import TestOutcomeSummary
+from scout_orchestrator.stages.checkout import ensure_checkout
 from scout_orchestrator.stages.context import BaseStage, StageContext, StageResult
 from scout_orchestrator.stages.tool_stage import (
     COVERAGE_TOOL_NAME,
     ToolRunBundle,
-    covered_changed_paths_note,
+    change_coverage_section,
+    changed_source_without_test_edit,
     run_tool_stage,
     summarize_tests,
 )
@@ -43,8 +45,8 @@ _TESTING_CATEGORIES: Final[tuple[ToolCategory, ...]] = (
 #: The test runner Scout requires. Its absence is an unverified area, not a skip.
 _REQUIRED_TEST_TOOLS: Final[frozenset[str]] = frozenset({"pytest"})
 
-#: Title used when the configuration asks for a finding about uncovered changes.
-_UNCOVERED_TITLE: Final = "changed source files are not exercised by any test in this change"
+#: Title used when the configuration asks for a finding about a source-only change.
+_UNCOVERED_TITLE: Final = "source changed without any test being added or modified"
 
 
 class TestingStage(BaseStage):
@@ -53,7 +55,12 @@ class TestingStage(BaseStage):
     stage = _STAGE
 
     async def run(self, ctx: StageContext) -> StageResult:
-        """Plan and execute the test and coverage tools, then build the summary."""
+        """Materialise the pinned revision, run the suite, and summarise the result.
+
+        The checkout happens here because the workspace is per-stage: running pytest in a directory
+        with no tests would collect nothing and report that as a pass.
+        """
+        await ensure_checkout(ctx)
         bundle = await run_tool_stage(
             ctx,
             categories=_TESTING_CATEGORIES,
@@ -71,11 +78,16 @@ class TestingStage(BaseStage):
         )
 
         findings = list(bundle.findings)
+        without_test_edit = changed_source_without_test_edit(ctx.changed_paths)
         if (
             ctx.require_repository_config().verification.require_tests_for_code_changes
-            and tests.change_is_covered is False
+            and without_test_edit
         ):
-            findings.append(_uncovered_change_finding(ctx, bundle=bundle, tests=tests))
+            findings.append(
+                _uncovered_change_finding(
+                    ctx, bundle=bundle, without_test_edit=without_test_edit
+                )
+            )
 
         return StageResult.succeeded_for(
             self.stage,
@@ -83,7 +95,10 @@ class TestingStage(BaseStage):
             tool_results=bundle.results,
             findings=tuple(findings),
             artifacts=ctx.artifacts.take(),
-            sections=(*bundle.sections, _coverage_section(tests)),
+            sections=(
+                *bundle.sections,
+                change_coverage_section(tests=tests, changed_paths=ctx.changed_paths),
+            ),
             tests=tests,
             payload={
                 "executed_tools": list(bundle.executed_tools),
@@ -92,6 +107,7 @@ class TestingStage(BaseStage):
                 "limitations": list(bundle.limitations()),
                 "change_is_covered": tests.change_is_covered,
                 "uncovered_changed_paths": list(tests.uncovered_changed_paths),
+                "changed_source_without_test_edit": list(without_test_edit),
             },
         )
 
@@ -115,43 +131,18 @@ def _narrative(tests: TestOutcomeSummary, bundle: ToolRunBundle) -> str:
     return base
 
 
-def _coverage_section(tests: TestOutcomeSummary) -> ReportSection:
-    """Render the change-coverage census as its own section.
-
-    A section rather than a detail line because "the tests passed but do not cover this
-    change" is the distinction spec section 67 exists for, and burying it inside the test
-    runner's section would make it invisible in the dashboard.
-    """
-    note = covered_changed_paths_note(tests)
-    if note is not None:
-        return ReportSection(
-            key="testing.change_coverage",
-            title="Change coverage",
-            status=ReportSectionStatus.WARNING,
-            summary=note[:8000],
-        )
-    if tests.change_is_covered is True:
-        summary = "every source file changed by this pull request is exercised by the tests"
-    else:
-        summary = (
-            "no coverage measurement and no test change were available, so whether the change "
-            "is exercised could not be determined"
-        )
-    return ReportSection(
-        key="testing.change_coverage",
-        title="Change coverage",
-        status=ReportSectionStatus.INFO,
-        summary=summary[:8000],
-    )
-
-
 def _uncovered_change_finding(
     ctx: StageContext,
     *,
     bundle: ToolRunBundle,
-    tests: TestOutcomeSummary,
+    without_test_edit: tuple[str, ...],
 ) -> Finding:
-    """Build the finding a repository asks for when code changes without tests (spec 67)."""
+    """Build the finding a repository asks for when code changes without a test edit (spec 67).
+
+    The claim is deliberately narrow: the change modified these source files and no test file. It does
+    not assert that no test executes them -- only a coverage measurement could support that -- and the
+    description says so, so the finding cannot be read as a coverage verdict.
+    """
     test_run = next(
         (result for result in bundle.results if result.tool in {"pytest", "vitest", "jest"}),
         None,
@@ -176,7 +167,7 @@ def _uncovered_change_finding(
                 artifact_id=test_run.stdout_artifact_id,
             )
         )
-    listed = ", ".join(tests.uncovered_changed_paths[:5])
+    listed = ", ".join(without_test_edit[:5])
     return Finding(
         id=new_id(IdKind.FINDING),
         job_id=ctx.job.id,
@@ -184,8 +175,9 @@ def _uncovered_change_finding(
         category=FindingCategory.TESTS,
         title=_UNCOVERED_TITLE,
         description=(
-            "This change modifies source files without adding or modifying any test, so the "
-            f"suite does not exercise them: {listed}."
+            "This change modifies source files without adding or modifying any test: "
+            f"{listed}. Scout cannot say whether the existing suite exercises them, because no "
+            "coverage measurement was available."
         ),
         repository=ctx.job.repository_full_name,
         evidence=evidence,

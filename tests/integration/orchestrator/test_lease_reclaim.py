@@ -9,8 +9,8 @@ story against a real PostgreSQL:
   its first *unresolved* stage rather than to the beginning, which is the whole point of the
   resolved-stage projection.
 
-The conditional-``UPDATE`` semantics of ``claim_lease`` are covered by the persistence suite; what is
-proven here is the orchestrator's use of it.
+The conditional-``UPDATE`` semantics of ``claim_lease`` are covered by the persistence suite;
+what is proven here is the orchestrator's use of it.
 """
 
 from __future__ import annotations
@@ -25,14 +25,13 @@ from scout_domain.enums import JobStatus
 from scout_domain.models.base import utcnow
 from scout_domain.models.job import CommitRange, JobStageOutcome, VerificationJob
 from scout_domain.models.repository import RepositoryRef
+from scout_orchestrator.orchestrator import Orchestrator
+from scout_orchestrator.settings import Settings
+from scout_orchestrator.state import RECLAIM_ERROR_PREFIX
 from scout_persistence.queue import InMemoryJobQueue
 from scout_persistence.tables import JobRow, JobStageRow
 from scout_persistence.unit_of_work import UnitOfWork
 from scout_tools.artifacts import InMemoryArtifactStore
-
-from scout_orchestrator.orchestrator import Orchestrator
-from scout_orchestrator.settings import Settings
-from scout_orchestrator.state import RECLAIM_ERROR_PREFIX
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker

@@ -199,6 +199,10 @@ class AgentCatalogEntry(ScoutModel):
     description: str
     capabilities: list[str] = Field(default_factory=list)
     prompt_versions: list[str] = Field(default_factory=list)
+    #: False when the role has a prompt and a declared capability set but no stage schedules
+    #: it yet. Surfaced so the agent page states what is actually running rather than
+    #: presenting the full roster as if every agent were live.
+    wired: bool = False
     runs: int = 0
     avg_latency_seconds: float | None = None
     input_tokens: int = 0

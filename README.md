@@ -16,15 +16,41 @@ Scout is **not** an autonomous engineer. It never merges, deploys, or approves i
 
 ## Status
 
-Early development. The platform foundation (Milestone 0–2) is being built first, followed by the
-first end-to-end vertical slice:
+**Verified working today.** The first vertical slice (spec section 83) runs end to end against a
+real git repository with no external accounts:
 
-```
-GitHub PR -> Webhook -> Create Job -> Checkout -> Run Tests -> Store Results -> Report -> GitHub Check
+```text
+GitHub PR -> webhook -> create job -> checkout pinned SHA -> run pytest
+          -> store artifacts -> generate report -> publish GitHub check
 ```
 
-See [`docs/ROADMAP.md`](docs/ROADMAP.md) for milestone status and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-for the system design.
+| Capability | State | Evidence |
+|---|---|---|
+| Monorepo, Docker Compose, CI | Done | `make up` brings PostgreSQL + Redis to healthy; CI runs lint, typecheck, tests, integration |
+| Domain model, state machine, retry policy | Done | `tests/unit/domain/` — 179 tests including every transition guard |
+| PostgreSQL schema + migrations | Done | 18 tables; `alembic check` reports no drift; 149 integration tests |
+| GitHub webhook + idempotency | Done | 348 tests; duplicate deliveries proven to create exactly one job under concurrency |
+| Job orchestration + worker + lease reclaim | Done | Jobs resume after a crash from their first unresolved stage |
+| Sandbox + 13 deterministic tools | Done | 127 tool tests; environment-leak and path-escape refusal tested |
+| LLM gateway (provider-agnostic) | Done | 257 tests; offline `FakeProvider` is the default |
+| Engineering memory + notifications | Done | 198 tests; routing is deliberately quiet at LOW/INFO |
+| Operator dashboard | Done | 10 routes; 75 tests; verified at `http://localhost:5173` |
+| **AI review, security, test, and feature-verification agents** | **Not wired** | `packages/agents` declares the roster and capability model; only repository analysis calls a model today |
+| **Investigation, notifications-on-failure, enforcement** | **Not wired** | Milestones 9–16 |
+
+Full per-milestone status: [`docs/ROADMAP.md`](docs/ROADMAP.md). System design:
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+### What this means in practice
+
+Scout can verify a pull request's *deterministic* properties today: does it compile, do the tests
+pass, is the change covered, does a scanner flag anything, is the pinned commit what was
+approved. It cannot yet *reason* about a change in context, and it does not verify the stated
+feature — feature verification currently reports every criterion as `not_verified`, which
+correctly forces `REQUIRES_HUMAN_REVIEW`.
+
+That is the honest state, and the recommendation gates are what make it visible rather than
+silent: a change whose feature could not be procedurally verified cannot reach `PASS`.
 
 ## Hardware
 

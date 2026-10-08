@@ -11,11 +11,12 @@ name — would hide the layering shortcut instead of documenting it.
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, select
 
+from scout_agents import AGENT_ROSTER, capabilities_for, describe, is_wired
 from scout_api.deps import UowDep
 from scout_api.schemas import (
     AgentCatalogEntry,
@@ -27,7 +28,7 @@ from scout_api.schemas import (
     RepositorySummaryView,
     ToolCatalogEntry,
 )
-from scout_domain.enums import ActorType, AgentRole, JobStatus, Severity
+from scout_domain.enums import ActorType, JobStatus, Severity
 from scout_domain.ids import IdKind, new_id
 from scout_domain.models.audit import AuditEvent
 from scout_domain.models.knowledge import (
@@ -53,39 +54,6 @@ __all__ = ["router"]
 _log = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["catalog"])
-
-#: What each agent role is for. Static, because the roster is fixed by design: agents do not
-#: spawn other agents (spec section 40), so the set is known at build time.
-_AGENT_DESCRIPTIONS: dict[str, str] = {
-    AgentRole.REPOSITORY_ANALYZER.value: (
-        "Builds a machine-readable understanding of the repository: services, entry points, "
-        "API surfaces, and architecture boundaries."
-    ),
-    AgentRole.CODE_REVIEWER.value: (
-        "Reviews the change for correctness, maintainability, API behaviour, data handling, "
-        "concurrency, error handling, and test quality."
-    ),
-    AgentRole.SECURITY.value: (
-        "Interprets deterministic security scanner output in context and inspects "
-        "authentication, authorization, input validation, and secret handling."
-    ),
-    AgentRole.TEST_ANALYSIS.value: (
-        "Distinguishes 'the tests passed' from 'the tests cover the change', and identifies "
-        "changed behaviour that no test exercises."
-    ),
-    AgentRole.FEATURE_VERIFICATION.value: (
-        "Extracts acceptance criteria and produces an executable verification plan with "
-        "recorded evidence for each criterion."
-    ),
-    AgentRole.INVESTIGATION.value: (
-        "Resolves uncertainty in the documented order: evidence, repository inspection, "
-        "tests, documentation, engineering memory, reasoning, and only then a human question."
-    ),
-    AgentRole.REPORT_GENERATOR.value: (
-        "Aggregates stage results into the structured verification report. It renders what "
-        "was observed; it does not decide the recommendation."
-    ),
-}
 
 
 @router.get(
@@ -211,7 +179,8 @@ async def list_agents(uow: UowDep) -> Page[AgentCatalogEntry]:
     cost figure to be honest.
     """
     entries: list[AgentCatalogEntry] = []
-    for role in AgentRole:
+    for spec in AGENT_ROSTER:
+        role = spec.role
         runs = int(
             await uow.session.scalar(
                 select(func.count()).select_from(AgentRunRow).where(AgentRunRow.role == role.value)
@@ -243,8 +212,9 @@ async def list_agents(uow: UowDep) -> Page[AgentCatalogEntry]:
         entries.append(
             AgentCatalogEntry(
                 role=role.value,
-                description=_AGENT_DESCRIPTIONS.get(role.value, ""),
-                capabilities=[capability.value for capability in _capabilities_for(role)],
+                description=describe(role),
+                capabilities=sorted(capability.value for capability in capabilities_for(role)),
+                wired=is_wired(role),
                 prompt_versions=prompt_versions,
                 runs=runs,
                 avg_latency_seconds=float(latency) if latency is not None else None,
@@ -430,54 +400,3 @@ async def metrics_summary(uow: UowDep) -> MetricsSummary:
         avg_job_duration_seconds=float(avg_duration) if avg_duration is not None else None,
         test_failures=test_failures,
     )
-
-
-def _capabilities_for(role: AgentRole) -> list[Any]:
-    """Return the capabilities each agent role is granted (spec section 54).
-
-    Least privilege is expressed here so that the dashboard can display it and so that a
-    reviewer can see, in one place, that the report generator cannot run tools and the
-    security agent cannot write to GitHub.
-    """
-    from scout_domain.enums import Capability
-
-    mapping_by_role: dict[AgentRole, list[Capability]] = {
-        AgentRole.REPOSITORY_ANALYZER: [
-            Capability.REPOSITORY_READ,
-            Capability.REPOSITORY_SEARCH,
-            Capability.GIT_DIFF,
-        ],
-        AgentRole.CODE_REVIEWER: [
-            Capability.REPOSITORY_READ,
-            Capability.REPOSITORY_SEARCH,
-            Capability.GIT_DIFF,
-            Capability.KNOWLEDGE_SEARCH,
-        ],
-        AgentRole.SECURITY: [
-            Capability.REPOSITORY_READ,
-            Capability.REPOSITORY_SEARCH,
-            Capability.SECURITY_SCAN,
-            Capability.DEPENDENCY_SCAN,
-            Capability.KNOWLEDGE_SEARCH,
-        ],
-        AgentRole.TEST_ANALYSIS: [
-            Capability.REPOSITORY_READ,
-            Capability.TEST_RUN,
-            Capability.TEST_GENERATE,
-            Capability.KNOWLEDGE_SEARCH,
-        ],
-        AgentRole.FEATURE_VERIFICATION: [
-            Capability.REPOSITORY_READ,
-            Capability.TEST_RUN,
-            Capability.TEST_GENERATE,
-            Capability.KNOWLEDGE_SEARCH,
-        ],
-        AgentRole.INVESTIGATION: [
-            Capability.REPOSITORY_READ,
-            Capability.REPOSITORY_SEARCH,
-            Capability.GIT_DIFF,
-            Capability.KNOWLEDGE_SEARCH,
-        ],
-        AgentRole.REPORT_GENERATOR: [Capability.KNOWLEDGE_SEARCH],
-    }
-    return list(mapping_by_role.get(role, []))

@@ -322,7 +322,9 @@ def skip_decision(
     2. **The repository's own required list.** A repository may demand a stage it would
        otherwise be able to disable.
     3. **The repository's disabled list**, recorded as a skip with a reason.
-    4. **Security scanning switched off in the repository configuration.**
+    4. **A check switched off in the repository configuration.** Security scanning and feature
+       verification can each be disabled; both are recorded as a skip with a reason, and the report
+       lists the opt-out as a limitation.
     5. **Risk.** A LOW-risk change may skip ``SECURITY_SCANNING``: the risk gate for LOW does
        not require human review, which is the domain's own way of saying automated
        verification is sufficient at that level. Every other stage always runs, so no change
@@ -346,6 +348,14 @@ def skip_decision(
 
     if stage is JobStatus.SECURITY_SCANNING:
         return _security_skip_decision(config=config, risk=risk)
+
+    if stage is JobStatus.FEATURE_VERIFYING and not config.feature_verification.enabled:
+        return SkipDecision(
+            True,
+            "feature verification is disabled by .scout/engineering.yaml "
+            "(feature_verification.enabled=false), so Scout states no criterion rather than "
+            "asserting one it did not check",
+        )
 
     return SkipDecision(False)
 

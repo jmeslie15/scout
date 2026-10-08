@@ -54,7 +54,6 @@ __all__ = [
     "COVERAGE_TOOL_NAME",
     "TEST_TOOL_NAMES",
     "ToolRunBundle",
-    "covered_changed_paths_note",
     "finding_category_for",
     "run_tool_stage",
     "section_for_tool_result",
@@ -296,21 +295,58 @@ def _synthetic_tool_result(
     )
 
 
+def coverage_measurement_present(result: ToolResult | None) -> bool:
+    """Whether a tool result is an actual coverage *measurement*.
+
+    Why this is not simply "a ``coverage`` row exists": a tool that was not applicable, or that
+    failed for infrastructure reasons, is still recorded as a row so the decision is visible in a
+    report rebuilt after a resume. Those rows carry no measurement, and treating one as "coverage
+    ran and found nothing uncovered" would assert that a change is exercised by tests on the
+    strength of a tool that never executed.
+    """
+    if result is None:
+        return False
+    if result.status not in {ToolStatus.PASSED, ToolStatus.FAILED}:
+        return False
+    return "percent_covered" in result.summary.values
+
+
+def changed_source_without_test_edit(changed_paths: Sequence[str]) -> tuple[str, ...]:
+    """Return changed *source* paths for a change that modified no test file.
+
+    This is a census, not a measurement. It answers "did this change arrive with a test edit?",
+    which is a useful and honest observation, and it is deliberately *not* the same question as
+    "does a test execute this code?" -- an existing test may already cover the change, and a
+    freshly added test may not reach the changed line. Callers that need the second question need
+    a coverage measurement.
+    """
+    buckets = classify_paths(changed_paths)
+    if buckets["tests"]:
+        return ()
+    return tuple(buckets["source"])
+
+
 def summarize_tests(
     results: Sequence[ToolResult],
     *,
     changed_paths: Sequence[str] = (),
     coverage_result: ToolResult | None = None,
 ) -> TestOutcomeSummary:
-    """Aggregate test execution and answer "do the tests cover the change?" (spec 67).
+    """Aggregate test execution and report what is *established* about change coverage (spec 67).
 
-    "The tests passed" and "the change is exercised by the tests" are different claims, and
-    a report that conflates them overstates itself. Two sources are used, in order:
+    ``change_is_covered`` answers exactly one question -- "does a test execute the changed
+    code?" -- and only a coverage measurement can answer it:
 
-    1. A coverage measurement, when one exists, because it is a machine observation.
-    2. A deterministic census: a change that touches source without touching any test added
-       or modified no test, which is exactly the "no test covers this" signal. This is
-       deliberately a *negative* signal -- Scout never asserts coverage it did not measure.
+    * a measurement ran and no changed path was left uncovered -> ``True``;
+    * a measurement ran and some changed path is uncovered -> ``False``, with the paths listed;
+    * no measurement -> ``None``, deliberately not ``False``. Scout does not claim that nothing
+      exercises the change, and it does not claim that something does.
+
+    The related-but-different question, "did this change arrive with a test edit?", is answered by
+    :func:`changed_source_without_test_edit` and surfaced as its own limitation
+    (:func:`scan_without_test_edit_note`) rather than folded into this field. Conflating the two
+    made the field mean two things depending on which branch produced it, which is precisely the
+    kind of ambiguity a report may not have.
     """
     total = passed = failed = skipped = errored = 0
     duration = 0.0
@@ -333,57 +369,103 @@ def summarize_tests(
         duration_seconds=duration,
     )
 
-    if total == 0 and coverage_result is None:
-        # Nothing ran, so Scout has no basis to say anything about coverage. Leaving the
-        # field unset is honest; asserting False would be a claim Scout cannot support.
-        return summary
-
-    if coverage_result is not None:
-        values = coverage_result.summary.values
-        uncovered = _split_paths(values.get("uncovered_changed_paths"))
-        percent = values.get("percent_covered")
+    if not coverage_measurement_present(coverage_result):
+        # Nothing measured execution, so the field stays undetermined even though the change may
+        # well be covered -- by an existing test, or by a test this change added.
+        del changed_paths
         return summary.model_copy(
-            update={
-                "change_is_covered": not uncovered,
-                "coverage_percent": None if percent is None else float(percent),
-                "uncovered_changed_paths": uncovered,
-            }
+            update={"change_is_covered": None, "uncovered_changed_paths": []}
         )
 
-    buckets = classify_paths(changed_paths)
-    source_paths = buckets["source"]
-    test_paths = buckets["tests"]
-    if not source_paths:
-        covered = True
-        uncovered_paths: list[str] = []
-    elif test_paths:
-        covered = True
-        uncovered_paths = []
-    else:
-        covered = False
-        uncovered_paths = list(source_paths)
-
+    assert coverage_result is not None  # guaranteed by coverage_measurement_present
+    values = coverage_result.summary.values
+    uncovered = _split_paths(values.get("uncovered_changed_paths"))
+    percent = values.get("percent_covered")
     return summary.model_copy(
-        update={"change_is_covered": covered, "uncovered_changed_paths": uncovered_paths}
+        update={
+            "change_is_covered": not uncovered,
+            "coverage_percent": None if percent is None else float(percent),
+            "uncovered_changed_paths": uncovered,
+        }
     )
 
 
-def covered_changed_paths_note(summary: TestOutcomeSummary) -> str | None:
-    """Render the coverage census as a limitation line, or ``None`` when clean.
+def scan_without_test_edit_note(changed_paths: Sequence[str]) -> str | None:
+    """Render the test-edit census as a stated limitation, or ``None`` when it found nothing.
 
-    Returned as a limitation rather than a finding because "no test was added for this
-    change" is a review prompt, not a defect; the repository's own
-    ``verification.require_tests_for_code_changes`` decides whether it becomes a finding.
+    Kept as a limitation rather than a verdict because it is a proxy: a change that arrived
+    without a test edit may still be covered by the existing suite. The repository's
+    ``verification.require_tests_for_code_changes`` setting decides whether it becomes a finding.
     """
-    if summary.change_is_covered is False and summary.uncovered_changed_paths:
-        listed = ", ".join(summary.uncovered_changed_paths[:5])
-        remainder = len(summary.uncovered_changed_paths) - 5
-        suffix = "" if remainder <= 0 else f" and {remainder} more"
-        return (
-            "the change modifies source files without adding or modifying any test, so the "
-            f"following changed paths are not exercised by the suite: {listed}{suffix}"
+    paths = changed_source_without_test_edit(changed_paths)
+    if not paths:
+        return None
+    listed = ", ".join(paths[:5])
+    remainder = len(paths) - 5
+    suffix = "" if remainder <= 0 else f" and {remainder} more"
+    return (
+        "no coverage measurement was available, and this change modifies source files without "
+        f"adding or modifying any test, so Scout cannot state whether a test exercises: "
+        f"{listed}{suffix}"
+    )
+
+
+def change_coverage_section(
+    *,
+    tests: TestOutcomeSummary,
+    changed_paths: Sequence[str] = (),
+) -> ReportSection:
+    """Render the change-coverage state as a report section.
+
+    One implementation for the testing stage and the report builder, so a report rebuilt after a
+    resume cannot describe the coverage state differently from the run that produced it. The
+    section states *which* question was answered -- a measurement, or the test-edit census -- so a
+    reader never has to guess what a ``True`` meant.
+    """
+    if tests.coverage_percent is not None or tests.change_is_covered is not None:
+        if tests.change_is_covered is False and tests.uncovered_changed_paths:
+            listed = ", ".join(tests.uncovered_changed_paths[:5])
+            return ReportSection(
+                key="testing.change_coverage",
+                title="Change coverage",
+                status=ReportSectionStatus.WARNING,
+                summary=(
+                    f"a coverage measurement ran and left {len(tests.uncovered_changed_paths)} "
+                    f"changed source path(s) not fully executed: {listed}"
+                ),
+            )
+        return ReportSection(
+            key="testing.change_coverage",
+            title="Change coverage",
+            status=ReportSectionStatus.INFO,
+            summary=(
+                "a coverage measurement ran and every changed source path is executed by the "
+                "suite"
+                if tests.change_is_covered is True
+                else "a coverage measurement ran; see the tool output for details"
+            ),
         )
-    return None
+
+    census_note = scan_without_test_edit_note(changed_paths)
+    if census_note is not None:
+        return ReportSection(
+            key="testing.change_coverage",
+            title="Change coverage",
+            status=ReportSectionStatus.WARNING,
+            summary=census_note[:8000],
+        )
+    return ReportSection(
+        key="testing.change_coverage",
+        title="Change coverage",
+        status=ReportSectionStatus.INFO,
+        summary=(
+            "no coverage measurement was available, so whether a test executes the changed code "
+            "was not determined. This change did add or modify a test."
+            if changed_paths
+            else "no coverage measurement was available, so whether a test executes the changed "
+            "code was not determined."
+        ),
+    )
 
 
 # --------------------------------------------------------------------------------------

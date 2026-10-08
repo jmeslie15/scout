@@ -4,13 +4,13 @@ These tests need a real PostgreSQL, because the behaviour they prove *is* databa
 conditional ``UPDATE`` deciding who owns a lease, a ``RUNNING`` stage row being marked failed by the
 reclaim sweep, and a status transition whose guard reads persisted rows.
 
-**A clean skip, not an error, when PostgreSQL is absent.** The fast target runs without Docker, so
-this directory must skip rather than fail; the check is a real connection attempt with a short
+**A clean skip, not an error, when PostgreSQL is absent.** The fast target runs without Docker,
+so this directory must skip rather than fail; the check is a real connection attempt with a short
 timeout, never an assumption that a configured URL implies a running server.
 
-**Every test runs against a schema it creates and drops.** Isolation uses ``search_path`` rather than
-a separate database, so the suite works against a managed instance where ``CREATE DATABASE`` is
-unavailable.
+**Every test runs against a schema it creates and drops.** Isolation uses ``search_path`` rather
+than a separate database, so the suite works against a managed instance where ``CREATE DATABASE``
+is unavailable.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import os
 import secrets
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Final
 
@@ -90,7 +90,7 @@ def postgres_url() -> str:
 
     try:
         asyncio.run(probe())
-    except Exception as exc:  # noqa: BLE001 - any failure means "no database"
+    except Exception as exc:
         pytest.skip(
             f"PostgreSQL is not reachable at {url!r} ({type(exc).__name__}: {exc}). "
             "Start it with: docker compose -f infra/compose/docker-compose.yml up -d postgres"
@@ -111,8 +111,12 @@ async def test_schema(postgres_url: str) -> AsyncIterator[str]:
 
 
 @pytest.fixture
-def migrated_schema(test_schema: str, postgres_url: str) -> Iterator[str]:
-    """Create a schema and apply every migration to it."""
+def migrated_schema(test_schema: str, postgres_url: str) -> str:
+    """Create a schema and apply every migration to it.
+
+    No teardown of its own: the ``test_schema`` fixture drops the schema, and the migration run
+    restores the environment variable before returning.
+    """
     previous = os.environ.get("SCOUT_DATABASE_URL")
     os.environ["SCOUT_DATABASE_URL"] = postgres_url
     try:
@@ -124,20 +128,20 @@ def migrated_schema(test_schema: str, postgres_url: str) -> Iterator[str]:
             os.environ.pop("SCOUT_DATABASE_URL", None)
         else:
             os.environ["SCOUT_DATABASE_URL"] = previous
-    yield test_schema
+    return test_schema
 
 
 @pytest.fixture
-def engine(migrated_schema: str, postgres_url: str) -> Iterator[AsyncEngine]:
+def engine(migrated_schema: str, postgres_url: str) -> AsyncEngine:
     """An engine whose every connection defaults to the migrated test schema.
 
-    A ``NullPool`` is required rather than merely tidy: the schema is dropped at the end of the test,
-    and a pooled connection pinned to it would either keep the schema alive or make the drop fail.
+    A ``NullPool`` is required rather than merely tidy: the schema is dropped at the end of the
+    test, so a pooled connection pinned to it would keep the schema alive or make the drop fail.
+    Nothing needs disposing for the same reason.
     """
-    built = create_engine_from_settings(
+    return create_engine_from_settings(
         postgres_url, pool_size=None, **search_path_options(migrated_schema)
     )
-    yield built
 
 
 @pytest.fixture

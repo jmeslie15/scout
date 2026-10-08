@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Control-plane HTTP API: webhooks, jobs, questions, approvals, dashboard queries."
 requires-python = ">=3.12"
 dependencies = [
+    "scout-agents",
     "scout-domain",
     "scout-persistence",
     "scout-observability",
@@ -24,6 +25,7 @@ build-backend = "hatchling.build"
 packages = ["scout_api"]
 
 [tool.uv.sources]
+scout-agents = { workspace = true }
 scout-domain = { workspace = true }
 scout-github = { workspace = true }
 scout-knowledge = { workspace = true }

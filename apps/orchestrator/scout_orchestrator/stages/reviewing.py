@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Final
 
 from scout_domain.enums import JobStatus
+from scout_orchestrator.stages.checkout import ensure_checkout
 from scout_orchestrator.stages.context import BaseStage, StageContext, StageResult
 from scout_orchestrator.stages.tool_stage import run_tool_stage
 from scout_tools.base import ToolCategory
@@ -40,7 +41,12 @@ class ReviewingStage(BaseStage):
     stage = _STAGE
 
     async def run(self, ctx: StageContext) -> StageResult:
-        """Plan and execute the review tools."""
+        """Materialise the pinned revision and run the repository's declared review tools.
+
+        The checkout happens here because the workspace is per-stage: a linter has nothing to read
+        in a directory that was created seconds ago and never populated.
+        """
+        await ensure_checkout(ctx)
         bundle = await run_tool_stage(
             ctx,
             categories=_REVIEW_CATEGORIES,

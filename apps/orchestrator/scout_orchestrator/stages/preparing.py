@@ -45,10 +45,11 @@ from scout_github import build_change_set, extract_requirement_text, render_unif
 from scout_observability import get_logger
 from scout_orchestrator.errors import StageExecutionError, StageInfrastructureError
 from scout_orchestrator.settings import parse_stage_names
+from scout_orchestrator.stages.checkout import ensure_checkout
 from scout_orchestrator.stages.context import BaseStage, StageContext, StageResult
 from scout_orchestrator.stages.gitdiff import build_diff_argv, parse_git_diff, render_path_list
 from scout_orchestrator.stages.prepared import PreparedState
-from scout_sandbox import GitRunner, ensure_git_available, repo_url_for
+from scout_sandbox import CheckoutResult, GitRunner
 from scout_tools.detection import detect_layout, detect_technology_stack, guess_service_roots
 
 if TYPE_CHECKING:
@@ -132,15 +133,7 @@ class PreparingStage(BaseStage):
     async def run(self, ctx: StageContext) -> StageResult:
         """Materialise the revision, describe it, and persist the description."""
         git = GitRunner(ctx.sandbox)
-        await ensure_git_available(ctx.sandbox)
-
-        checkout = await git.materialize(
-            ctx.workspace,
-            repo_url=repo_url_for(ctx.job.repository_full_name, base_url=ctx.settings.git_base_url),
-            base_sha=ctx.job.base_sha,
-            head_sha=ctx.job.head_sha,
-            token=ctx.settings.git_token,
-        )
+        checkout: CheckoutResult = await ensure_checkout(ctx)
         _log.info(
             "materialised pinned revision",
             job_id=ctx.job.id,

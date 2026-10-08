@@ -114,6 +114,8 @@ _STOPWORDS: Final[frozenset[str]] = frozenset(
         "such",
         "support",
         "supports",
+        "test",
+        "tests",
         "than",
         "that",
         "their",
@@ -155,7 +157,10 @@ _SOURCE_BY_HEADING: Final[dict[str, str]] = {
     "## Commit messages": "commit_messages",
 }
 
-_TOKEN_PATTERN: Final[re.Pattern[str]] = re.compile(r"[a-z0-9_]+")
+#: Tokens are split on underscores as well as non-alphanumerics, so a criterion that says
+#: "multiply" matches a test named ``test_multiply``. Keeping ``_`` inside a token would make the
+#: test name a single opaque word and the match would never fire.
+_TOKEN_PATTERN: Final[re.Pattern[str]] = re.compile(r"[a-z0-9]+")
 
 
 class FeatureVerificationStage(BaseStage):
@@ -219,7 +224,16 @@ def build_criteria_for(
     test_runtime_available: bool,
     head_sha: str,
 ) -> tuple[CriterionVerification, ...]:
-    """Build the criterion verifications from the highest-authority source available."""
+    """Build the criterion verifications from the highest-authority source available.
+
+    A repository that has switched feature verification off gets no criteria at all, and therefore
+    no unverified area: Scout states nothing rather than asserting something it did not check. The
+    stage is skipped with a reason by the orchestrator, and the report lists the opt-out as a
+    limitation.
+    """
+    if not config.feature_verification.enabled:
+        return ()
+
     declared = [text for text in config.feature_verification.acceptance_criteria if text.strip()]
     if declared:
         return tuple(
@@ -229,7 +243,6 @@ def build_criteria_for(
                 passing_tests=passing_tests,
                 test_results=test_results,
                 test_runtime_available=test_runtime_available,
-                head_sha=head_sha,
             )
             for text in declared[:_MAX_CRITERIA]
         )
@@ -243,7 +256,6 @@ def build_criteria_for(
                 passing_tests=passing_tests,
                 test_results=test_results,
                 test_runtime_available=test_runtime_available,
-                head_sha=head_sha,
             )
             for text, source in extracted[:_MAX_CRITERIA]
         )
@@ -348,38 +360,43 @@ def _verify(
     passing_tests: Sequence[str],
     test_results: Sequence[ToolResult],
     test_runtime_available: bool,
-    head_sha: str,
 ) -> CriterionVerification:
-    """Verify one stated criterion against the tests that actually passed."""
-    match = _match_passing_test(criterion, passing_tests)
-    primary = _primary_test_result(test_results)
+    """Assess one *stated* criterion, which Scout has no procedure for yet.
 
-    if match is not None:
-        return CriterionVerification(
-            criterion=criterion,
-            status=CriterionStatus.PASSED,
-            procedure=[
-                f"run {primary.tool if primary else 'pytest'} over the verified checkout",
-                f"observe the result of {match}",
-            ],
-            expected_result=f"{match} passes",
-            actual_result=f"{match} passed at commit {head_sha[:12]}",
-            evidence=_test_evidence(primary),
-            notes="verified by an existing test that exercises this criterion",
-            source=source,
+    A criterion that came from prose -- ``.scout/engineering.yaml`` or the pull-request description
+    -- describes an intent, and Scout has not derived a procedure that demonstrates *that intent*.
+    A test whose name happens to share a word with it is a candidate, not evidence: treating the
+    overlap as a pass would be exactly the "the tests passed, therefore the feature works"
+    inference spec section 23 forbids, and would let a criterion pass on the strength of a test
+    written for something else.
+
+    So the outcome is ``NOT_VERIFIED`` (or ``BLOCKED`` when the test runtime produced nothing), and
+    the overlapping test is recorded as a lead for the human to follow. Deriving and executing a
+    procedure per criterion is the feature-verification agent's job (spec section 85, a later
+    slice); until it is wired, Scout reports the gap rather than papering over it.
+    """
+    overlap = _overlapping_passing_test(criterion, passing_tests)
+    primary = _primary_test_result(test_results)
+    lead = (
+        ""
+        if overlap is None
+        else (
+            f" The suite contains {overlap}, whose name overlaps this criterion; Scout has not "
+            "established that it exercises the stated intent."
         )
+    )
 
     if not test_runtime_available:
         return CriterionVerification(
             criterion=criterion,
             status=CriterionStatus.BLOCKED,
             procedure=[],
-            expected_result="a test exercising this criterion passes",
+            expected_result="a procedure demonstrating this criterion is executed",
             actual_result="",
             evidence=[],
             notes=(
-                "the test runtime produced no result for this revision, so Scout could not "
-                "attempt this criterion at all"
+                "the test runtime produced no result for this revision, so Scout could not attempt "
+                "this criterion at all." + lead
             ),
             source=source,
         )
@@ -388,18 +405,18 @@ def _verify(
         criterion=criterion,
         status=CriterionStatus.NOT_VERIFIED,
         procedure=[
-            "Scout ran the repository's test suite, which reported a result",
+            f"run {primary.tool if primary else 'the test suite'} over the verified checkout",
             (
-                "no test in the suite exercises this criterion, and no executable procedure for "
-                "it was available"
+                "no procedure derived from this criterion was executed, so its intent is "
+                "unverified even though the suite ran"
             ),
         ],
-        expected_result="a test or a manual procedure demonstrates this criterion",
+        expected_result="execution of a procedure that demonstrates this criterion",
         actual_result="",
         evidence=[],
         notes=(
-            "a not-verified criterion is not a failure: it states that Scout had no executable "
-            "procedure, which is why it is surfaced for a human rather than assumed"
+            "not verified is not a failure: Scout states that it had no procedure for this "
+            "criterion, which is why it is surfaced for a human rather than assumed." + lead
         ),
         source=source,
     )
@@ -463,8 +480,10 @@ def _parse_passing_tests(payload: bytes) -> tuple[str, ...]:
     return tuple(passing)
 
 
-def _match_passing_test(criterion: str, passing_tests: Sequence[str]) -> str | None:
+def _overlapping_passing_test(criterion: str, passing_tests: Sequence[str]) -> str | None:
     """Return the passing test whose name shares a significant token with ``criterion``.
+
+    A *lead*, not evidence: the caller records it for a human and never promotes it to a pass.
 
     Deterministic and explainable: the longest shared significant token wins, so "multiply"
     matches ``test_multiply`` and a generic word like "helper" (a stopword) never matches

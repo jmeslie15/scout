@@ -68,7 +68,8 @@ from scout_orchestrator.stages.feature_verification import (
 from scout_orchestrator.stages.tool_stage import (
     COVERAGE_TOOL_NAME,
     TEST_TOOL_NAMES,
-    covered_changed_paths_note,
+    change_coverage_section,
+    scan_without_test_edit_note,
     section_for_tool_result,
     summarize_tests,
 )
@@ -273,7 +274,9 @@ def sections_for_report(
     sections.extend(
         section_for_tool_result(stage_name=result.stage, result=result) for result in tool_results
     )
-    sections.append(_change_coverage_section(tests))
+    sections.append(
+        change_coverage_section(tests=tests, changed_paths=prepared.change_set.changed_paths)
+    )
     if needs_unverified_section(criteria):
         sections.append(criteria_section(criteria))
     return tuple(sections)
@@ -371,6 +374,11 @@ def limitations_for(
         f"{stage} is disabled by .scout/engineering.yaml (verification.disabled_stages)"
         for stage in prepared.repository_config.verification.disabled_stages
     ]
+    if not prepared.repository_config.feature_verification.enabled:
+        notes.append(
+            "feature verification is disabled by .scout/engineering.yaml "
+            "(feature_verification.enabled=false), so no acceptance criterion was checked"
+        )
     for section in sections:
         if section.status is not ReportSectionStatus.SKIPPED:
             continue
@@ -425,9 +433,9 @@ def build_report(
     for note in limitations_for(prepared, sections):
         if note not in limitations:
             limitations.append(note)
-    coverage_note = covered_changed_paths_note(tests)
-    if coverage_note is not None and coverage_note not in limitations:
-        limitations.append(coverage_note)
+    census_note = scan_without_test_edit_note(change_set.changed_paths)
+    if census_note is not None and census_note not in limitations:
+        limitations.append(census_note)
 
     try:
         return VerificationReport(
@@ -606,38 +614,6 @@ def _report_evidence(findings: Sequence[Finding]) -> list[EvidenceReference]:
             if len(evidence) >= _MAX_REPORT_EVIDENCE:
                 return evidence
     return evidence
-
-
-def _change_coverage_section(tests: TestOutcomeSummary) -> ReportSection:
-    """Render the change-coverage census as its own section.
-
-    Mirrors :func:`scout_orchestrator.stages.testing._coverage_section` deliberately: the report
-    is rebuilt from persisted facts rather than from the testing stage's result, so both paths
-    must produce the same section, and the shared :func:`covered_changed_paths_note` is what
-    keeps the wording identical.
-    """
-    note = covered_changed_paths_note(tests)
-    if note is not None:
-        return ReportSection(
-            key="testing.change_coverage",
-            title="Change coverage",
-            status=ReportSectionStatus.WARNING,
-            summary=note[:8000],
-        )
-    summary = (
-        "every source file changed by this pull request is exercised by the tests"
-        if tests.change_is_covered is True
-        else (
-            "no coverage measurement and no test change were available, so whether the change "
-            "is exercised could not be determined"
-        )
-    )
-    return ReportSection(
-        key="testing.change_coverage",
-        title="Change coverage",
-        status=ReportSectionStatus.INFO,
-        summary=summary,
-    )
 
 
 def _architecture_impact(

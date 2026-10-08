@@ -126,7 +126,20 @@ class TestOutcomeSummary(ScoutModel):
     skipped: int = Field(default=0, ge=0)
     errors: int = Field(default=0, ge=0)
     duration_seconds: float = Field(default=0.0, ge=0.0)
-    #: True when the change added or modified behaviour that no test exercises.
+    #: Whether the changed production behaviour is exercised by at least one test.
+    #:
+    #: ``True`` means a test runs the changed code. It does **not** mean the change is correct:
+    #: a test that fails because of the change still exercises it, and the signal for that is
+    #: ``failed > 0``, a ``TESTS`` finding, and a recommendation of ``FAIL`` or
+    #: ``REQUEST_CHANGES``. Conflating "covered" with "correct" would make it impossible to
+    #: distinguish an untested change from a change whose tests caught a regression.
+    #:
+    #: ``False`` means a changed production path that no test touches — the case
+    #: ``verification.require_tests_for_code_changes`` turns into a finding.
+    #:
+    #: ``None`` means Scout could not determine coverage, which is the honest answer when no
+    #: test ran and no coverage report exists. It is deliberately not ``False``: an unset field
+    #: cannot be mistaken for an assertion.
     change_is_covered: bool | None = None
     coverage_percent: float | None = Field(default=None, ge=0.0, le=100.0)
     #: Files changed by the PR that no test touches. This is the "tests passed" vs

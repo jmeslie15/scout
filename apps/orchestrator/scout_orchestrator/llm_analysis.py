@@ -97,7 +97,7 @@ async def analyse_repository(
         )
 
     try:
-        from scout_llm import build_gateway_from_env
+        from scout_llm import PromptLibrary, build_gateway_from_env, default_prompts_root
     except ImportError as exc:
         _log.info("llm gateway unavailable; using the deterministic narrative", error=str(exc))
         return AnalysisNarrative(
@@ -109,11 +109,20 @@ async def analyse_repository(
             ),
         )
 
-    variables = _prompt_variables(summary=summary, change_set=change_set)
+    context_values = _prompt_variables(summary=summary, change_set=change_set)
     try:
+        # The template, not this module, decides which variables it needs. Supplying extras is an
+        # error in the prompt library -- it would hide a template referencing a variable nobody
+        # provides -- so the declared placeholders are the contract, and a placeholder this module
+        # cannot fill becomes an empty string rather than a render failure.
+        role = _analyser_role()
+        template = PromptLibrary(default_prompts_root()).load(
+            role, settings.llm_analyzer_prompt_version
+        )
+        variables = {name: context_values.get(name, "") for name in template.placeholders}
         gateway = build_gateway_from_env()
         result = await gateway.complete(
-            _analyser_role(),
+            role,
             settings.llm_analyzer_prompt_version,
             variables,
             job_id=job.id,

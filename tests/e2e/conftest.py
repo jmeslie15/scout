@@ -1,12 +1,13 @@
 """Fixtures for the end-to-end vertical slice.
 
-The slice runs the real control plane against real infrastructure. That means it needs PostgreSQL
-(for the job, stage, artifact, and audit rows), Redis (to prove the queue the orchestrator consumes
-is the production transport), and a real git repository -- and it must **skip cleanly** when any of
-those is absent, because the fast test target runs without Docker.
+The slice runs the real control plane against real infrastructure. That means it needs
+PostgreSQL (for the job, stage, artifact, and audit rows), Redis (to prove the queue the
+orchestrator consumes is the production transport), and a real git repository -- and it must
+**skip cleanly** when any of those is absent, because the fast test target runs without Docker.
 
-The connection checks are real attempts with short timeouts. Assuming that a configured URL implies
-a running server is how a suite becomes "skipped" in one environment and mysteriously red in another.
+The connection checks are real attempts with short timeouts. Assuming that a configured URL
+implies a running server is how a suite becomes "skipped" in one environment and mysteriously
+red in another.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import asyncio
 import os
 import secrets
 import sys
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Final
 
@@ -72,7 +73,7 @@ async def _probe_postgres(url: str) -> None:
 
 async def _probe_redis(url: str) -> None:
     """Ping Redis, or raise."""
-    from redis.asyncio import Redis  # noqa: PLC0415 - only needed on this path
+    from redis.asyncio import Redis
 
     client = Redis.from_url(url, socket_connect_timeout=CONNECT_TIMEOUT_SECONDS)
     try:
@@ -87,7 +88,7 @@ def postgres_url() -> str:
     url = database_url()
     try:
         asyncio.run(_probe_postgres(url))
-    except Exception as exc:  # noqa: BLE001 - any failure means "no database"
+    except Exception as exc:
         pytest.skip(
             f"PostgreSQL is not reachable at {url!r} ({type(exc).__name__}: {exc}). Start it with: "
             "docker compose -f infra/compose/docker-compose.yml up -d postgres"
@@ -101,7 +102,7 @@ def redis_server_url() -> str:
     url = redis_url()
     try:
         asyncio.run(_probe_redis(url))
-    except Exception as exc:  # noqa: BLE001 - any failure means "no Redis"
+    except Exception as exc:
         pytest.skip(
             f"Redis is not reachable at {url!r} ({type(exc).__name__}: {exc}). Start it with: "
             "docker compose -f infra/compose/docker-compose.yml up -d redis"
@@ -142,8 +143,12 @@ async def test_schema(postgres_url: str) -> AsyncIterator[str]:
 
 
 @pytest.fixture
-def migrated_schema(test_schema: str, postgres_url: str) -> Iterator[str]:
-    """Create a schema and apply every migration to it, so the slice runs the real schema."""
+def migrated_schema(test_schema: str, postgres_url: str) -> str:
+    """Create a schema and apply every migration to it, so the slice runs the real schema.
+
+    No teardown of its own: the ``test_schema`` fixture drops the schema, and the environment
+    variable is restored before returning.
+    """
     previous = os.environ.get("SCOUT_DATABASE_URL")
     os.environ["SCOUT_DATABASE_URL"] = postgres_url
     try:
@@ -155,16 +160,15 @@ def migrated_schema(test_schema: str, postgres_url: str) -> Iterator[str]:
             os.environ.pop("SCOUT_DATABASE_URL", None)
         else:
             os.environ["SCOUT_DATABASE_URL"] = previous
-    yield test_schema
+    return test_schema
 
 
 @pytest.fixture
-def engine(migrated_schema: str, postgres_url: str) -> Iterator[AsyncEngine]:
+def engine(migrated_schema: str, postgres_url: str) -> AsyncEngine:
     """An engine pinned to the migrated test schema, with no pooled connections outliving it."""
-    built = create_engine_from_settings(
+    return create_engine_from_settings(
         postgres_url, pool_size=None, **search_path_options(migrated_schema)
     )
-    yield built
 
 
 @pytest.fixture
@@ -207,3 +211,13 @@ def passing_repo(git_root: Path) -> GitFixture:
 def failing_repo(git_root: Path) -> GitFixture:
     """A repository whose head commit breaks the behaviour its suite asserts."""
     return build_git_fixture(git_root / "failing", failing=True)
+
+
+@pytest.fixture
+def verifying_repo(git_root: Path) -> GitFixture:
+    """A passing repository that has left feature verification switched on.
+
+    Used to prove the acceptance-criteria gate is real: with the stage enabled, criteria stated only
+    in prose are ``not_verified`` and a clean change cannot reach ``PASS``.
+    """
+    return build_git_fixture(git_root / "verifying", failing=False, feature_verification=True)

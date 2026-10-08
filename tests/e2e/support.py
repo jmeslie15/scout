@@ -1,14 +1,14 @@
 """Fixtures the vertical slice needs: a real git repository and a fake GitHub.
 
 The slice is only meaningful if the repository is real. A mocked checkout would prove that Scout
-calls a function, not that Scout can fetch a pinned commit, run the repository's own test suite in a
-sandbox, and report what it observed. So the fixture builds an actual repository with two commits,
-an actual bare remote that accepts a fetch by SHA, and a trivial Python package whose tests either
-pass or fail.
+calls a function, not that Scout can fetch a pinned commit, run the repository's own suite in a
+sandbox, and report what it observed. So the fixture builds an actual repository with two
+commits, an actual bare remote that accepts a fetch by SHA, and a trivial Python package whose
+tests either pass or fail.
 
-The GitHub side is the shipped :class:`~scout_github.FakeGitHubClient`, which is what makes the slice
-runnable offline. GitHub's role here is small but load-bearing: it is where the pull request *body*
-comes from, and the body is the requirement material FEATURE_VERIFYING works from.
+The GitHub side is the shipped :class:`~scout_github.FakeGitHubClient`, which is what makes the
+slice runnable offline. GitHub's role here is small but load-bearing: it is where the pull
+request *body* comes from, and the body is the requirement material FEATURE_VERIFYING works from.
 """
 
 from __future__ import annotations
@@ -27,8 +27,8 @@ __all__ = ["GitFixture", "build_git_fixture", "register_pull_request"]
 FULL_NAME = "acme/widgets"
 PULL_REQUEST_NUMBER = 7
 
-#: The requirement text the fixture's pull request states. FEATURE_VERIFYING extracts its acceptance
-#: criteria from this, and the passing test is named so that a criterion matches it by execution.
+#: The requirement text the fixture's pull request states. FEATURE_VERIFYING extracts its
+#: acceptance criteria from this, and the passing test is named so a criterion overlaps it.
 PR_BODY = "Adds a multiply() helper to widget.py so callers can scale values.\n"
 
 _HAPPY_TEST = (
@@ -39,23 +39,14 @@ _HAPPY_TEST = (
     "    assert multiply(2, 3) == 6\n"
 )
 
-_BROKEN_TEST = (
-    "from widget import add\n\n\n"
-    "def test_add():\n"
-    "    assert add(1, 2) == 3\n"
-)
+_BROKEN_TEST = "from widget import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n"
 
 _WIDGET_BASE = "def add(a, b):\n    return a + b\n"
 
-_WIDGET_HAPPY = (
-    "def add(a, b):\n"
-    "    return a + b\n\n\n"
-    "def multiply(a, b):\n"
-    "    return a * b\n"
-)
+_WIDGET_HAPPY = "def add(a, b):\n    return a + b\n\n\ndef multiply(a, b):\n    return a * b\n"
 
-#: A deliberately wrong implementation: ``add`` subtracts. The suite that ships with the repository
-#: still asserts the correct behaviour, so the test run genuinely fails rather than erroring.
+#: A deliberately wrong implementation: ``add`` subtracts. The suite that ships with the
+#: repository still asserts the correct behaviour, so the run genuinely fails rather than erroring.
 _WIDGET_BROKEN = "def add(a, b):\n    return a - b\n"
 
 _PYPROJECT = """\
@@ -68,11 +59,18 @@ requires-python = ">=3.12"
 testpaths = ["tests"]
 """
 
-#: Repository configuration for the fixture. Security scanning is disabled so the slice stays
-#: hermetic: no scanner is installed on a typical developer machine, and a check that cannot run is
-#: reported as unverified -- which would (correctly) prevent the clean case from reaching PASS. The
-#: skip is recorded on a ``JobStage`` with this file as its reason, and the operator floor that can
-#: override it is covered by the unit suite.
+#: Repository configuration for the slice-1 fixture (spec section 83).
+#:
+#: Two checks are switched off, and both are recorded as skips with this file as the reason:
+#:
+#: * **Security scanning**, because no scanner is installed on a typical developer machine and a
+#:   check that cannot run is (correctly) reported as unverified.
+#: * **Feature verification**, because it is not part of the first vertical slice. Section 83 covers
+#:   PR -> webhook -> job -> checkout -> tests -> results -> report -> check; criteria verification
+#:   is section 85's slice, and the feature-verification agent is not wired yet. Leaving it on would
+#:   make every stated criterion ``not_verified`` and therefore every clean change
+#:   ``REQUIRES_HUMAN_REVIEW`` -- correct behaviour, but not this slice's subject. The third test in
+#:   the file re-enables it precisely to prove that gate still holds.
 _ENGINEERING_YAML = """\
 project:
   name: widget
@@ -80,6 +78,21 @@ project:
 verification:
   disabled_stages:
     - SECURITY_SCANNING
+
+feature_verification:
+  enabled: false
+"""
+
+_ENGINEERING_YAML_VERIFYING = """\
+project:
+  name: widget
+
+verification:
+  disabled_stages:
+    - SECURITY_SCANNING
+
+feature_verification:
+  enabled: true
 """
 
 
@@ -100,6 +113,7 @@ def build_git_fixture(
     root: Path,
     *,
     failing: bool,
+    feature_verification: bool = False,
     full_name: str = FULL_NAME,
     pull_request_number: int = PULL_REQUEST_NUMBER,
 ) -> GitFixture:
@@ -109,6 +123,9 @@ def build_git_fixture(
         root: A temporary directory the caller owns.
         failing: When true, the head commit breaks ``add`` without touching the test, so the
             repository's own suite fails and the change is not covered by any test modification.
+        feature_verification: When true, ``feature_verification.enabled`` is left on, so the
+            acceptance criteria extracted from the pull-request body are assessed and reported as
+            unverified. When false the stage is skipped with a recorded reason.
         full_name: Repository identity, as ``owner/name``.
         pull_request_number: The pull request the job is about.
 
@@ -124,7 +141,10 @@ def build_git_fixture(
 
     _write(origin / "pyproject.toml", _PYPROJECT)
     _write(origin / "conftest.py", "")
-    _write(origin / ".scout" / "engineering.yaml", _ENGINEERING_YAML)
+    _write(
+        origin / ".scout" / "engineering.yaml",
+        _ENGINEERING_YAML_VERIFYING if feature_verification else _ENGINEERING_YAML,
+    )
     _write(origin / "widget.py", _WIDGET_BASE)
     _write(origin / "tests" / "test_widget.py", _BROKEN_TEST)
 

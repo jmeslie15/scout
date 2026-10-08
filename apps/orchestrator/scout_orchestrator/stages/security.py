@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Final
 
 from scout_domain.enums import JobStatus
+from scout_orchestrator.stages.checkout import ensure_checkout
 from scout_orchestrator.stages.context import BaseStage, StageContext, StageResult
 from scout_orchestrator.stages.tool_stage import run_tool_stage
 from scout_tools.base import ToolCategory
@@ -40,7 +41,12 @@ class SecurityStage(BaseStage):
     stage = _STAGE
 
     async def run(self, ctx: StageContext) -> StageResult:
-        """Plan and execute the security tools."""
+        """Materialise the pinned revision and run the security tools.
+
+        The checkout happens here because the workspace is per-stage, and a secret scanner over an
+        empty directory would report a clean repository.
+        """
+        await ensure_checkout(ctx)
         config = ctx.require_repository_config()
         declared_tools = list(config.security.tools) or None
 
