@@ -1,6 +1,6 @@
 # Scout
 
-** AI Scout** — an engineering verification platform that continuously verifies software
+**AI Scout** — an engineering verification platform that continuously verifies software
 changes before they are promoted through the development lifecycle.
 
 > **AI investigates and recommends. Deterministic systems verify. Humans authorize.**
